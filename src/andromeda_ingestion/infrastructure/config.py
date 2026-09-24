@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     ai_endpoint: str | None = None
     ai_api_key: str | None = None
     ai_model: str = "configured-structured-extractor"
+    ai_structured_output_mode: Literal["json_schema", "json_object"] = "json_schema"
     max_request_body_bytes: Annotated[int, Field(gt=0, le=10_000_000)] = 1_048_576
     max_artifact_bytes: Annotated[int, Field(gt=0, le=100_000_000)] = 30_000_000
     fetch_timeout_seconds: Annotated[float, Field(gt=0.1, le=120)] = 30.0

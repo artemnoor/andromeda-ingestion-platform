@@ -2,7 +2,8 @@
 
 All cross-layer and Core-facing payloads have `schema_version`. The principal
 contracts are `SourceDefinition`, `DiscoveredItem`, `FetchedArtifact`,
-`RawArtifact`, `PreparedDocument`, `ExtractionProfile`, `ExtractionResult`,
+`RawArtifact`, `PreparedDocument`, `ExtractionProfile`, `LLMExtractionPayload`,
+`ExtractionResult`,
 `CandidateFact`, `CandidateRelation`, `CandidateRule`,
 `UnknownConceptCandidate`, `ChangeCandidate`, `ObservationCandidate`,
 `SourceRegistration` and `CorePublishResult`.
@@ -22,3 +23,5 @@ Contract evolution rules:
   Core source-document metadata ID;
 - raw bytes and storage keys are Ingestion-internal and are represented across
   the boundary only as metadata/evidence references.
+- `LLMExtractionPayload` is semantic-only; `ExtractionResult` ingestion metadata
+  is created deterministically by the application adapter.

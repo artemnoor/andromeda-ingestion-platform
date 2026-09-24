@@ -9,7 +9,7 @@ from andromeda_ingestion.domain.contracts import (
     EvidenceLocator,
     ExtractionContext,
     ExtractionProfile,
-    ExtractionResult,
+    LLMExtractionPayload,
     OntologySnapshot,
     PreparedDocument,
     RawArtifact,
@@ -21,26 +21,23 @@ from andromeda_ingestion.infrastructure.ai.http_json import StructuredJsonHttpAI
 @pytest.mark.asyncio
 async def test_structured_ai_adapter_sends_complete_ontology_snapshot() -> None:
     captured: dict = {}
-    result = ExtractionResult(
-        id="extraction-1",
-        artifact_id="artifact-1",
-        profile_id="profile-1",
-        profile_version=1,
-        input_fingerprint="a" * 64,
-        output_fingerprint="b" * 64,
-        document_type="document",
-        provider="configured",
-        model="model-1",
-        prompt_version="prompt-1",
-        created_at=datetime.now(UTC),
-    )
+    semantic_payload = _empty_payload()
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.update(json.loads(request.content))
-        return httpx.Response(200, json={"output": result.model_dump(mode="json")}, request=request)
+        return httpx.Response(
+            200,
+            json={
+                "output": semantic_payload.model_dump(mode="json"),
+                "usage": {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19},
+            },
+            request=request,
+        )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    adapter = StructuredJsonHttpAIAdapter("https://ai.example/extract", "secret", "model-1", client=client)
+    adapter = StructuredJsonHttpAIAdapter(
+        "https://ai.example/extract", "secret", "model-1", client=client, provider="configured"
+    )
     artifact = RawArtifact(
         id="artifact-1",
         source_id="source-1",
@@ -85,7 +82,7 @@ async def test_structured_ai_adapter_sends_complete_ontology_snapshot() -> None:
         untrusted_document_data=[chunk],
     )
 
-    await adapter.extract(context)
+    result = await adapter.extract(context)
     await client.aclose()
 
     payload = captured
@@ -100,6 +97,44 @@ async def test_structured_ai_adapter_sends_complete_ontology_snapshot() -> None:
     assert '"type": "object"' in system_content
     assert "UNTRUSTED" in user_content
     assert payload["response_format"]["type"] == "json_schema"
+    schema = payload["response_format"]["json_schema"]["schema"]
+    assert set(schema["required"]).issubset(schema["properties"])
+    assert result.artifact_id == artifact.id
+    assert result.profile_id == "profile-1"
+    assert result.provider == "configured"
+    assert result.model == "model-1"
+    assert len(result.input_fingerprint) == 64
+    assert len(result.output_fingerprint) == 64
+    assert result.token_usage == {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19}
+    assert result.created_at.tzinfo is not None
+
+
+def _empty_payload() -> LLMExtractionPayload:
+    return LLMExtractionPayload(
+        entities=[],
+        facts=[],
+        relations=[],
+        rules=[],
+        unknown_concepts=[],
+        changes=[],
+    )
+
+
+def test_llm_payload_schema_is_self_consistent_and_empty_payload_is_valid() -> None:
+    schema = LLMExtractionPayload.model_json_schema()
+    assert set(schema["required"]).issubset(schema["properties"])
+    assert LLMExtractionPayload.model_validate(
+        {
+            "entities": [],
+            "facts": [],
+            "relations": [],
+            "rules": [],
+            "unknown_concepts": [],
+            "changes": [],
+            "confidence_summary": {},
+            "warnings": [],
+        }
+    ) == _empty_payload()
 
 
 def _minimal_context() -> ExtractionContext:
@@ -173,6 +208,86 @@ async def test_structured_ai_adapter_maps_timeout() -> None:
 async def test_structured_ai_adapter_rejects_invalid_output(response: httpx.Response) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(response.status_code, headers=response.headers, content=response.content, request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = StructuredJsonHttpAIAdapter("https://ai.example/extract", "secret", "model-1", client=client)
+    with pytest.raises(ValidationError) as error:
+        await adapter.extract(_minimal_context())
+    await client.aclose()
+    assert error.value.code == "AI_INVALID_OUTPUT"
+
+
+@pytest.mark.asyncio
+async def test_empty_semantic_payload_builds_full_result_without_provider_metadata() -> None:
+    semantic = _empty_payload().model_dump(mode="json")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"output": semantic}, request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = StructuredJsonHttpAIAdapter("https://ai.example/extract", "secret", "model-1", client=client)
+    result = await adapter.extract(_minimal_context())
+    await client.aclose()
+
+    assert result.entities == []
+    assert result.facts == []
+    assert result.artifact_id == "artifact-errors"
+    assert result.profile_id == "profile-errors"
+    assert result.provider == "openai-compatible"
+    assert result.model == "model-1"
+    assert result.input_fingerprint != "c" * 64
+    assert result.output_fingerprint != "d" * 64
+
+
+@pytest.mark.asyncio
+async def test_json_object_mode_uses_same_local_contract() -> None:
+    semantic = _empty_payload().model_dump(mode="json")
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(semantic)}}]}, request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = StructuredJsonHttpAIAdapter(
+        "https://ai.example/extract", "secret", "model-1", client=client, structured_output_mode="json_object"
+    )
+    result = await adapter.extract(_minimal_context())
+    await client.aclose()
+
+    assert captured["response_format"] == {"type": "json_object"}
+    assert result.rules == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"artifact_id": "hallucinated"},
+        {"provider": "hallucinated"},
+        {"created_at": datetime.now(UTC).isoformat()},
+    ],
+)
+async def test_llm_system_metadata_is_rejected_by_strict_semantic_contract(extra: dict) -> None:
+    semantic = {**_empty_payload().model_dump(mode="json"), **extra}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"output": semantic}, request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = StructuredJsonHttpAIAdapter("https://ai.example/extract", "secret", "model-1", client=client)
+    with pytest.raises(ValidationError) as error:
+        await adapter.extract(_minimal_context())
+    await client.aclose()
+    assert error.value.code == "AI_INVALID_OUTPUT"
+
+
+@pytest.mark.asyncio
+async def test_malformed_semantic_field_is_rejected() -> None:
+    semantic = {**_empty_payload().model_dump(mode="json"), "facts": "hello"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"output": semantic}, request=request)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     adapter = StructuredJsonHttpAIAdapter("https://ai.example/extract", "secret", "model-1", client=client)

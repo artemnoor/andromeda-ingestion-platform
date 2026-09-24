@@ -4,8 +4,8 @@ Standalone evidence-first ingestion service for Andromeda Knowledge Core.
 
 The service discovers documents, fetches and preserves immutable raw artifacts,
 prepares locator-aware content, sends schema-guided data to a provider-neutral AI
-port, validates typed candidates, detects changes, and publishes only
-Observations through the Core API. It never writes Core tables, activates a
+port, validates typed candidates, detects changes, and publishes observations
+and first-class RuleCandidate payloads through the Core API. It never writes Core tables, activates a
 Rule/Ontology, or treats an AI response as canonical truth.
 
 ## Quick start
@@ -25,7 +25,9 @@ Open [Swagger UI](http://localhost:8010/docs), [OpenAPI](http://localhost:8010/o
 The compose profile uses deterministic MockAI and an in-memory Core contract
 double, so it is runnable without paid credentials. Set `APP_ENV=production`,
 `MOCK_AI_ENABLED=false`, `AI_PROVIDER=http-json`, `AI_ENDPOINT`,
-`AI_API_KEY`, and `KNOWLEDGE_CORE_URL` to use external adapters.
+`AI_API_KEY`, `AI_MODEL`, `AI_STRUCTURED_OUTPUT_MODE=json_schema` (or
+`json_object` for generic providers), and `KNOWLEDGE_CORE_URL` to use external
+adapters.
 
 ## Local verification
 
@@ -107,4 +109,3 @@ docs/                 architecture, contracts, operations and ADRs
 See [docs/architecture.md](docs/architecture.md) for the full design and
 [docs/core-integration.md](docs/core-integration.md) for the exact existing
 Knowledge Core compatibility mapping.
-

@@ -95,7 +95,7 @@ def _core_contract_smoke(client: httpx.Client, core_url: str) -> dict[str, Any]:
     ontology_id = ontology["id"]
     for code, name in [("University", "University"), ("Program", "Program"), ("AdmissionBenefit", "Admission benefit")]:
         _post(client, f"{core_url}/api/v1/ontology/versions/{ontology_id}/object-types", {"code": code, "name": name}, editor)
-    for code in ["required_exam", "minimum_score", "budget_places", "tuition_per_year", "known_benefit"]:
+    for code in ["required_exam", "minimum_score", "budget_places", "tuition_per_year"]:
         _post(
             client,
             f"{core_url}/api/v1/ontology/versions/{ontology_id}/properties",
@@ -143,7 +143,7 @@ def _core_contract_smoke(client: httpx.Client, core_url: str) -> dict[str, Any]:
         "logical_key": "http.e2e.known_rule",
         "rule_type": "admission_benefit",
         "conditions": {"kind": "comparison", "operator": ">=", "left": {"kind": "context", "path": "campaign_year"}, "right": 2027},
-        "effects": [{"type": "SET", "target": "known_benefit", "value": True}],
+        "effects": [{"type": "ADD", "target": "admission_score", "value": 30}],
         "confidence": 0.99,
         "confidence_status": "HIGH_CONFIDENCE",
         "evidence": [{"page": 2, "quote": "known benefit"}],
@@ -155,10 +155,23 @@ def _core_contract_smoke(client: httpx.Client, core_url: str) -> dict[str, Any]:
     unknown = _post(
         client,
         f"{core_url}/api/v1/rules/candidates",
-        {**rule_payload, "candidate_id": "http-e2e-rule-unknown", "effects": [{"type": "SET", "target": "new_unknown_concept", "value": True}]},
+        {
+            **rule_payload,
+            "candidate_id": "http-e2e-rule-unknown",
+            "conditions": {
+                "kind": "exists",
+                "target": {"kind": "fact", "property": "RegionalEducationalCoefficient", "id": "http-e2e-fact-unknown"},
+            },
+        },
         {**editor, "Idempotency-Key": "http-e2e-rule-unknown"},
     )
-    if not observation.get("id") or not rule.get("rule_id") or unknown.get("status") != "NEEDS_REVIEW" or not unknown.get("proposal_id"):
+    if (
+        not observation.get("id")
+        or not rule.get("rule_id")
+        or rule.get("status") != "DRAFT"
+        or unknown.get("status") != "NEEDS_REVIEW"
+        or not unknown.get("proposal_id")
+    ):
         raise AssertionError("Core HTTP contract smoke did not produce the expected observation/rule/review results")
     provenance = client.get(f"{core_url}/api/v1/provenance/{rule['provenance_id']}")
     provenance.raise_for_status()
@@ -247,8 +260,8 @@ def _ingestion_pipeline_smoke(client: httpx.Client, ingestion_url: str, core_url
         {"source_id": regulation_source["id"], "item_id": regulation_items.json()[0]["id"], "profile_code": "regulatory_document"},
         editor,
     )
-    if regulation_pipeline["state"] != "NEEDS_REVIEW":
-        raise AssertionError(f"Rule proposal pipeline was expected to stay review-bound: {regulation_pipeline}")
+    if regulation_pipeline["state"] != "PUBLISHED":
+        raise AssertionError(f"Rule candidate pipeline was expected to publish without a false effect-target review: {regulation_pipeline}")
     regulation_candidates_response = client.get(f"{ingestion_url}/api/v1/extractions/{regulation_pipeline['extraction_id']}/candidates")
     regulation_candidates_response.raise_for_status()
     regulation_candidates = regulation_candidates_response.json()
@@ -257,8 +270,8 @@ def _ingestion_pipeline_smoke(client: httpx.Client, ingestion_url: str, core_url
         raise AssertionError("CandidateRule crossed the real HTTP boundary as an observation or without a Core rule id")
     core_rule = client.get(f"{core_url}/api/v1/rules/{rule_candidate['core_rule_id']}")
     core_rule.raise_for_status()
-    if core_rule.json()["status"] == "ACTIVE":
-        raise AssertionError("Ingestion was able to activate a rule")
+    if core_rule.json()["status"] != "DRAFT":
+        raise AssertionError(f"Rule candidate must remain a Core draft, got {core_rule.json()['status']}")
     provenance = client.get(f"{core_url}/api/v1/provenance/{rule_candidate['core_provenance_id']}")
     provenance.raise_for_status()
     if provenance.json().get("source_document") is None:

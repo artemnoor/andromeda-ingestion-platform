@@ -1,7 +1,8 @@
 """Provider-neutral HTTP JSON AI adapter.
 
-The adapter supports an OpenAI-compatible response envelope as a convenience,
-but the application only depends on the typed ``ExtractionResult`` contract.
+The provider returns only the strict semantic ``LLMExtractionPayload``.  This
+adapter owns the seam where trusted application metadata is added to produce a
+complete ``ExtractionResult``.
 """
 
 from __future__ import annotations
@@ -9,10 +10,16 @@ from __future__ import annotations
 import json
 import logging
 import re
+from time import perf_counter
+from typing import Literal
+from uuid import uuid4
 
 import httpx
+from pydantic import ValidationError as PydanticValidationError
 
-from andromeda_ingestion.domain.contracts import ExtractionContext, ExtractionResult
+from andromeda_ingestion.domain.changes.fingerprints import fingerprint
+from andromeda_ingestion.domain.common import utc_now
+from andromeda_ingestion.domain.contracts import ExtractionContext, ExtractionResult, LLMExtractionPayload
 from andromeda_ingestion.domain.errors import UpstreamError, ValidationError
 from andromeda_ingestion.domain.ports.ai import DocumentUnderstandingPort
 
@@ -28,19 +35,27 @@ class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
         timeout_seconds: float = 60.0,
         *,
         client: httpx.AsyncClient | None = None,
-        structured_output: bool = True,
+        provider: str = "openai-compatible",
+        structured_output_mode: Literal["json_schema", "json_object"] = "json_schema",
+        structured_output: bool | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.api_key = api_key
         self.model = model
         self.timeout_seconds = timeout_seconds
         self.client = client
-        self.structured_output = structured_output
+        self.provider = provider
+        if structured_output is not None:
+            structured_output_mode = "json_schema" if structured_output else "json_object"
+        if structured_output_mode not in {"json_schema", "json_object"}:
+            raise ValueError("structured_output_mode must be 'json_schema' or 'json_object'")
+        self.structured_output_mode = structured_output_mode
 
     async def extract(self, context: ExtractionContext) -> ExtractionResult:
+        started = perf_counter()
         rule_dsl_schema = context.ontology.rule_dsl_schema or context.profile.metadata.get("rule_dsl_schema", {})
         ontology = context.ontology.model_dump(mode="json")
-        schema = dict(context.profile.output_schema)
+        schema = LLMExtractionPayload.model_json_schema()
         system_context = {
             "role": "Extract evidence-backed typed candidates from the document.",
             "trusted_instructions": context.trusted_instructions,
@@ -58,7 +73,7 @@ class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
                     "type": "json_schema",
                     "json_schema": {"name": "andromeda_extraction", "strict": True, "schema": schema},
                 }
-                if self.structured_output
+                if self.structured_output_mode == "json_schema"
                 else {"type": "json_object"}
             ),
             "messages": [
@@ -114,17 +129,80 @@ class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
                 await client.aclose()
         content = self._content(payload)
         try:
-            result_payload = json.loads(content)
-            return ExtractionResult.model_validate(result_payload)
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise ValidationError("AI_INVALID_OUTPUT", "Configured AI provider did not return a valid ExtractionResult", {}) from exc
+            semantic_payload = LLMExtractionPayload.model_validate(json.loads(content))
+        except (json.JSONDecodeError, PydanticValidationError, ValueError) as exc:
+            logger.warning("ai_invalid_semantic_output", extra={"endpoint": self.endpoint, "model": self.model})
+            raise ValidationError("AI_INVALID_OUTPUT", "Configured AI provider did not return a valid LLMExtractionPayload", {}) from exc
+
+        token_usage = self._token_usage(payload)
+        result = self._assemble_result(context, semantic_payload, token_usage, (perf_counter() - started) * 1000)
+        logger.info(
+            "ai_extraction_completed",
+            extra={
+                "provider": self.provider,
+                "model": self.model,
+                "extraction_id": result.id,
+                "duration_ms": result.duration_ms,
+                "token_usage": result.token_usage,
+            },
+        )
+        return result
+
+    def _assemble_result(
+        self,
+        context: ExtractionContext,
+        semantic_payload: LLMExtractionPayload,
+        token_usage: dict[str, int],
+        duration_ms: float,
+    ) -> ExtractionResult:
+        semantic_data = semantic_payload.model_dump(mode="json")
+        input_data = {
+            "artifact_checksum": context.artifact.checksum,
+            "prepared_document_fingerprint": context.prepared_document.content_fingerprint,
+            "profile_id": context.profile.id,
+            "profile_version": context.profile.version,
+            "ontology_version_id": context.ontology.ontology_version_id,
+            "ontology_version_code": context.ontology.version_code,
+            "prompt_version": context.profile.prompt_version,
+            "provider": self.provider,
+            "model": self.model,
+        }
+        return ExtractionResult(
+            id=uuid4().hex,
+            artifact_id=context.artifact.id,
+            profile_id=context.profile.id,
+            profile_version=context.profile.version,
+            input_fingerprint=fingerprint(input_data),
+            output_fingerprint=fingerprint(semantic_data),
+            document_type=context.prepared_document.document_type,
+            provider=self.provider,
+            model=self.model,
+            prompt_version=context.profile.prompt_version,
+            **semantic_data,
+            raw_provider_metadata={"structured_output_mode": self.structured_output_mode},
+            duration_ms=duration_ms,
+            token_usage=token_usage,
+            created_at=utc_now(),
+        )
+
+    @staticmethod
+    def _token_usage(payload: object) -> dict[str, int]:
+        if not isinstance(payload, dict) or not isinstance(payload.get("usage"), dict):
+            return {}
+        usage = payload["usage"]
+        return {
+            key: value
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            if isinstance(value := usage.get(key), int) and not isinstance(value, bool) and value >= 0
+        }
 
     @staticmethod
     def _content(payload: object) -> str:
         if isinstance(payload, dict) and isinstance(payload.get("output"), dict):
             return json.dumps(payload["output"])
         if isinstance(payload, dict) and isinstance(payload.get("choices"), list) and payload["choices"]:
-            message = payload["choices"][0].get("message", {})
+            choice = payload["choices"][0]
+            message = choice.get("message", {}) if isinstance(choice, dict) else {}
             content = message.get("content") if isinstance(message, dict) else None
             if isinstance(content, str):
                 return re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)

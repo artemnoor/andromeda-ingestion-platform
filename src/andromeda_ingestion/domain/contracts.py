@@ -295,6 +295,24 @@ class ChangeCandidate(StrictModel):
     evidence: list[EvidenceRef] = Field(min_length=1)
 
 
+class LLMExtractionPayload(StrictModel):
+    """Semantic-only output contract returned by an AI provider.
+
+    Ingestion metadata is deliberately absent.  The application owns those
+    values so a provider cannot hallucinate identifiers, timestamps or
+    fingerprints.
+    """
+
+    entities: list[CandidateEntity]
+    facts: list[CandidateFact]
+    relations: list[CandidateRelation]
+    rules: list[CandidateRule]
+    unknown_concepts: list[UnknownConceptCandidate]
+    changes: list[ChangeCandidate]
+    confidence_summary: dict[str, Decimal] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ExtractionResult(StrictModel):
     schema_version: str = SCHEMA_VERSION
     id: str

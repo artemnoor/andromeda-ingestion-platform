@@ -51,7 +51,15 @@ class AdapterContainer:
                 core = KnowledgeCoreHttpAdapter(settings)
         ai_router = MockAIProviderRouter()
         if settings.ai_provider != "mock" and settings.ai_endpoint and settings.ai_api_key:
-            ai_router = MockAIProviderRouter(StructuredJsonHttpAIAdapter(settings.ai_endpoint, settings.ai_api_key, settings.ai_model))
+            ai_router = MockAIProviderRouter(
+                StructuredJsonHttpAIAdapter(
+                    settings.ai_endpoint,
+                    settings.ai_api_key,
+                    settings.ai_model,
+                    provider=settings.ai_provider,
+                    structured_output_mode=settings.ai_structured_output_mode,
+                )
+            )
         http_fetcher = SafeHttpFetcher(settings)
         return cls(
             settings=settings,

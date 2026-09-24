@@ -37,8 +37,8 @@ Bounded responsibilities:
 - Preparation creates chunks and evidence locators.
 - Extraction returns strict candidate contracts; AI output is untrusted.
 - Validation applies schema, ontology snapshot, DSL, evidence and confidence rules.
-- Publishing sends Observation envelopes to Core; it cannot accept Facts or
-  activate Rules.
+- Publishing sends Observation envelopes and first-class RuleCandidate payloads
+  to Core; it cannot accept Facts or activate Rules.
 
 The old `andromeda` repository was used as donor evidence. Raw snapshot and
 locator concepts were reused, fetch policy and source registry were adapted,
@@ -54,4 +54,3 @@ candidates and ingestion audit events. Core owns canonical objects, Facts,
 Relations, Rules, Ontology, review decisions, dependencies and derived values.
 
 The two services exchange versioned contracts, not SQLAlchemy models or tables.
-

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from andromeda_ingestion.domain.contracts import ExtractionProfile
+from andromeda_ingestion.domain.contracts import ExtractionProfile, LLMExtractionPayload
 
 CORE_RULE_DSL_SCHEMA = {
     "kinds": [
@@ -37,16 +37,7 @@ def _profile(code: str, document_types: list[str], concepts: list[str], instruct
         version=1,
         expected_document_types=document_types,
         expected_ontology_concepts=concepts,
-        output_schema={
-            "type": "object",
-            "required": ["entities", "facts", "relations", "rules", "unknown_concepts", "changes"],
-            "properties": {
-                "entities": {"type": "array"},
-                "facts": {"type": "array"},
-                "relations": {"type": "array"},
-                "rules": {"type": "array"},
-            },
-        },
+        output_schema=LLMExtractionPayload.model_json_schema(),
         instructions=instructions,
         validation_rules={"require_evidence": True, "low_confidence_threshold": 0.8},
         ai_strategy="mock",

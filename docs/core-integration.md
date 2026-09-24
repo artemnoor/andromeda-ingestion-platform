@@ -9,15 +9,13 @@ existing Core routes:
 | register logical source | POST /api/v1/sources with X-Role |
 | register immutable document metadata | POST /api/v1/source-documents with checksum and artifact storage reference |
 | publish candidate observation | `POST /api/v1/observations` with `Idempotency-Key` and `X-Correlation-ID` |
+| publish first-class rule candidate | `POST /api/v1/rules/candidates` with `Idempotency-Key` and `X-Correlation-ID` |
 
-The existing Core currently exposes a generic Observation envelope rather than a
-dedicated `CandidateRule`/`CandidateRelation` ingestion endpoint. Therefore this
-service maps facts to `property_candidate`, relations to `relation_candidate`,
-and rules/changes/unknown concepts to typed `property_candidate` + `raw_payload`
-with full evidence. Core still decides whether an observation becomes canonical
-knowledge or a review/proposal. This is an intentional compatibility adapter,
-not a direct-DB shortcut. A future Core contract can add dedicated candidate
-routes without changing the ingestion domain/application code.
+Facts and relations still use the generic observation envelope. Rules use the
+dedicated first-class `CandidateRule` endpoint, where Core validates the Rule
+DSL, records immutable source-document provenance, creates ontology proposals
+for unknown semantic references, and leaves the rule as `DRAFT` or
+`NEEDS_REVIEW`. Ingestion never activates a rule and never writes Core tables.
 
 The Core source_document_id points to metadata only. Raw bytes never cross the
 boundary and remain behind Ingestion's ArtifactStoragePort. The mock adapter

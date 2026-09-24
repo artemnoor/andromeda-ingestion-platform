@@ -16,10 +16,21 @@ AI context has three explicit trusted inputs and one untrusted channel:
 3. provider output schema;
 4. untrusted source document data and locators.
 
-The result is a strict ExtractionResult containing entities, facts, relations,
-rules, unknown concepts, changes, per-candidate confidence and evidence. It is
-stored as an extraction result and candidate rows; it is not a Fact or Rule in
-Core.
+The provider returns a strict `LLMExtractionPayload` containing entities, facts,
+relations, rules, unknown concepts, changes, per-candidate confidence and
+evidence. The adapter then creates the full `ExtractionResult` metadata
+locally: identifiers, provider/model, UTC timestamp, duration, token usage and
+fingerprints. The input fingerprint is derived from the artifact, prepared
+document, profile, ontology, prompt, provider and model; the output fingerprint
+is derived from canonical semantic JSON and contains no timestamp. The result
+is stored as an extraction result and candidate rows; it is not a Fact or Rule
+in Core.
+
+The structured-output JSON Schema is generated from
+`LLMExtractionPayload.model_json_schema()`, so its required fields and
+properties cannot drift apart. `AI_STRUCTURED_OUTPUT_MODE=json_schema` sends a
+provider-native JSON Schema request; `json_object` sends the generic JSON mode
+and applies the same local contract validation.
 
 The default MockAI is deterministic and supports the BMSTU program/regulation
 fixtures. StructuredJsonHttpAIAdapter is an optional provider-neutral adapter
