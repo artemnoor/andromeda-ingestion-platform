@@ -36,7 +36,7 @@ class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
         *,
         client: httpx.AsyncClient | None = None,
         provider: str = "openai-compatible",
-        structured_output_mode: Literal["json_schema", "json_object"] = "json_schema",
+        structured_output_mode: Literal["json_schema", "json_object"] = "json_object",
         structured_output: bool | None = None,
     ) -> None:
         self.endpoint = endpoint

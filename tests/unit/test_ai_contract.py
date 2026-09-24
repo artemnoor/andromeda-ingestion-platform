@@ -96,9 +96,7 @@ async def test_structured_ai_adapter_sends_complete_ontology_snapshot() -> None:
     assert '"kinds": ["comparison"]' in system_content
     assert '"type": "object"' in system_content
     assert "UNTRUSTED" in user_content
-    assert payload["response_format"]["type"] == "json_schema"
-    schema = payload["response_format"]["json_schema"]["schema"]
-    assert set(schema["required"]).issubset(schema["properties"])
+    assert payload["response_format"] == {"type": "json_object"}
     assert result.artifact_id == artifact.id
     assert result.profile_id == "profile-1"
     assert result.provider == "configured"

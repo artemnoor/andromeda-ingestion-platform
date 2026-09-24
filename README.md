@@ -25,9 +25,9 @@ Open [Swagger UI](http://localhost:8010/docs), [OpenAPI](http://localhost:8010/o
 The compose profile uses deterministic MockAI and an in-memory Core contract
 double, so it is runnable without paid credentials. Set `APP_ENV=production`,
 `MOCK_AI_ENABLED=false`, `AI_PROVIDER=http-json`, `AI_ENDPOINT`,
-`AI_API_KEY`, `AI_MODEL`, `AI_STRUCTURED_OUTPUT_MODE=json_schema` (or
-`json_object` for generic providers), and `KNOWLEDGE_CORE_URL` to use external
-adapters.
+`AI_API_KEY`, `AI_MODEL`, `AI_STRUCTURED_OUTPUT_MODE=json_object` (use
+`json_schema` only for providers/API modes that support strict JSON Schema),
+and `KNOWLEDGE_CORE_URL` to use external adapters.
 
 ## Local verification
 

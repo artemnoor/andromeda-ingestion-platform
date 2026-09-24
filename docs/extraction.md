@@ -26,11 +26,12 @@ is derived from canonical semantic JSON and contains no timestamp. The result
 is stored as an extraction result and candidate rows; it is not a Fact or Rule
 in Core.
 
-The structured-output JSON Schema is generated from
-`LLMExtractionPayload.model_json_schema()`, so its required fields and
-properties cannot drift apart. `AI_STRUCTURED_OUTPUT_MODE=json_schema` sends a
-provider-native JSON Schema request; `json_object` sends the generic JSON mode
-and applies the same local contract validation.
+When `json_schema` is explicitly enabled, its payload schema is generated from
+`LLMExtractionPayload.model_json_schema()`. The default
+`AI_STRUCTURED_OUTPUT_MODE=json_object` is compatible with Chat Completions
+providers such as DeepSeek; `json_schema` remains an explicit opt-in for
+providers/API modes that support strict JSON Schema. Both modes apply the same
+local contract validation.
 
 The default MockAI is deterministic and supports the BMSTU program/regulation
 fixtures. StructuredJsonHttpAIAdapter is an optional provider-neutral adapter
