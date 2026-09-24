@@ -10,8 +10,11 @@ from andromeda_ingestion.domain.contracts import (
     OntologySnapshot,
     RawArtifact,
     SourceDefinition,
+    SourceRegistration,
 )
 from andromeda_ingestion.domain.errors import UpstreamError, ValidationError
+from andromeda_ingestion.infrastructure.ai.mock import MockDocumentUnderstanding
+from andromeda_ingestion.infrastructure.knowledge_core.mock import MockKnowledgeCoreAdapter
 from andromeda_ingestion.infrastructure.sources.registry import demo_source_definitions
 
 
@@ -41,7 +44,7 @@ class UnavailableCore:
     async def get_ontology_snapshot(self) -> OntologySnapshot:
         raise UpstreamError("CORE_UNAVAILABLE", "Core is unavailable", {})
 
-    async def register_source(self, source: SourceDefinition, artifact: RawArtifact) -> str:
+    async def register_source(self, source: SourceDefinition, artifact: RawArtifact) -> SourceRegistration:
         raise UpstreamError("CORE_UNAVAILABLE", "Core is unavailable", {})
 
     async def publish_observation(
@@ -74,6 +77,15 @@ def test_invalid_ai_output_is_not_published(app_client, fixture_root: Path):
     assert body["error_code"] == "AI_INVALID_OUTPUT"
     assert not client.app.state.adapters.core.observations
 
+    client.app.state.adapters.ai_router.provider = MockDocumentUnderstanding()
+    retried = client.post(
+        "/api/v1/pipelines/run",
+        json={"source_id": source.id, "item_id": item_id, "profile_code": "university_program"},
+        headers={"X-Role": "EDITOR"},
+    )
+    assert retried.json()["state"] == "PUBLISHED"
+    assert client.app.state.adapters.ai_router.provider.calls == 1
+
 
 def test_core_outage_keeps_extraction_for_retry(app_client, fixture_root: Path):
     client, _ = app_client
@@ -95,3 +107,14 @@ def test_core_outage_keeps_extraction_for_retry(app_client, fixture_root: Path):
     extraction = client.get(f"/api/v1/extractions/{body['extraction_id']}")
     assert extraction.status_code == 200
     assert extraction.json()["extraction"]["status"] == "VALIDATED"
+
+    provider = client.app.state.adapters.ai_router.provider
+    client.app.state.adapters.core = MockKnowledgeCoreAdapter()
+    retried = client.post(
+        "/api/v1/pipelines/run",
+        json={"source_id": source.id, "item_id": item_id, "profile_code": "university_program"},
+        headers={"X-Role": "EDITOR"},
+    )
+    assert retried.status_code == 200
+    assert retried.json()["state"] == "PUBLISHED"
+    assert provider.calls == 1

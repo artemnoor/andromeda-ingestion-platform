@@ -17,13 +17,26 @@ from andromeda_ingestion.domain.ports.ai import DocumentUnderstandingPort
 
 
 class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
-    def __init__(self, endpoint: str, api_key: str, model: str, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        api_key: str,
+        model: str,
+        timeout_seconds: float = 60.0,
+        *,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
         self.endpoint = endpoint
         self.api_key = api_key
         self.model = model
+        self.timeout_seconds = timeout_seconds
+        self.client = client
 
     async def extract(self, context: ExtractionContext) -> ExtractionResult:
-        schema = context.profile.output_schema | {"rule_dsl_schema": context.profile.metadata.get("rule_dsl_schema", {})}
+        ontology = context.ontology.model_dump(mode="json")
+        rule_dsl_schema = context.ontology.rule_dsl_schema or context.profile.metadata.get("rule_dsl_schema", {})
+        ontology["rule_dsl_schema"] = rule_dsl_schema
+        schema = context.profile.output_schema | {"rule_dsl_schema": rule_dsl_schema}
         request = {
             "model": self.model,
             "temperature": 0,
@@ -35,6 +48,10 @@ class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
                         "purpose": "Extract evidence-backed candidates",
                         "trusted_instructions": context.trusted_instructions,
                         "output_schema": schema,
+                        "ontology_snapshot": ontology,
+                        "object_types": context.ontology.object_types,
+                        "properties": context.ontology.properties,
+                        "relation_types": context.ontology.relation_types,
                     },
                 },
                 {
@@ -46,15 +63,20 @@ class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
                 },
             ],
         }
+        owned_client = self.client is None
+        client = self.client
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(self.endpoint, headers={"Authorization": f"Bearer {self.api_key}"}, json=request)
-                response.raise_for_status()
-                payload = response.json()
+            client = client or httpx.AsyncClient(timeout=self.timeout_seconds)
+            response = await client.post(self.endpoint, headers={"Authorization": f"Bearer {self.api_key}"}, json=request)
+            response.raise_for_status()
+            payload = response.json()
         except httpx.HTTPError as exc:
             raise UpstreamError(
                 "AI_PROVIDER_UNAVAILABLE", "Configured AI provider request failed", {"provider_endpoint": self.endpoint}
             ) from exc
+        finally:
+            if owned_client and client is not None:
+                await client.aclose()
         content = self._content(payload)
         try:
             result_payload = json.loads(content)

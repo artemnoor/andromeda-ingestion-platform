@@ -5,8 +5,9 @@ existing Core routes:
 
 | Ingestion operation | Core route |
 |---|---|
-| ontology snapshot | `GET /api/v1/ontology/versions`, then `GET /api/v1/ontology/versions/{id}` |
-| register source/artifact provenance | `POST /api/v1/sources` with `X-Role` |
+| ontology snapshot | GET /api/v1/ontology/snapshot |
+| register logical source | POST /api/v1/sources with X-Role |
+| register immutable document metadata | POST /api/v1/source-documents with checksum and artifact storage reference |
 | publish candidate observation | `POST /api/v1/observations` with `Idempotency-Key` and `X-Correlation-ID` |
 
 The existing Core currently exposes a generic Observation envelope rather than a
@@ -18,7 +19,8 @@ knowledge or a review/proposal. This is an intentional compatibility adapter,
 not a direct-DB shortcut. A future Core contract can add dedicated candidate
 routes without changing the ingestion domain/application code.
 
-The mock adapter mirrors this contract for CI. Live Core smoke is optional and
-requires a running Core URL/database; no external AI key is required for the
-ingestion test suite.
-
+The Core source_document_id points to metadata only. Raw bytes never cross the
+boundary and remain behind Ingestion's ArtifactStoragePort. The mock adapter
+mirrors source/document registration and observation idempotency for CI. Live
+Core smoke is optional and requires a running Core URL/database; no external AI
+key is required for the ingestion test suite.

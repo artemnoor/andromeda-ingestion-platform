@@ -6,6 +6,7 @@ import io
 import json
 from hashlib import sha256
 from html import unescape
+from typing import Any
 from uuid import uuid4
 
 from bs4 import BeautifulSoup
@@ -71,13 +72,13 @@ class GenericDocumentPreparation(DocumentPreparationPort):
             text = element.get_text(" ", strip=True)
             if not text:
                 continue
-            selector = element.name if not element.get("id") else f"#{element.get('id')}"
+            selector = _stable_selector(element)
             locator = EvidenceLocator(
                 artifact_id=artifact.id,
                 source_url=artifact.canonical_url,
                 selector=selector,
-                text_start=index,
-                text_end=index + len(text),
+                text_start=0,
+                text_end=len(text),
                 quote=text[:4000],
             )
             chunks.extend(self._split_chunk(artifact, text, index, locator, "html"))
@@ -91,7 +92,13 @@ class GenericDocumentPreparation(DocumentPreparationPort):
                 for row_index, row in enumerate(rows, start=1):
                     text = " | ".join(row)
                     locator = EvidenceLocator(
-                        artifact_id=artifact.id, source_url=artifact.canonical_url, table=str(table_index), row=row_index, quote=text[:4000]
+                        artifact_id=artifact.id,
+                        source_url=artifact.canonical_url,
+                        table=str(table_index),
+                        row=row_index,
+                        text_start=0,
+                        text_end=len(text),
+                        quote=text[:4000],
                     )
                     chunks.extend(self._split_chunk(artifact, text, len(chunks), locator, "table"))
         for link in soup.find_all("a", href=True):
@@ -105,7 +112,14 @@ class GenericDocumentPreparation(DocumentPreparationPort):
         for page_number, page in enumerate(reader.pages, start=1):
             text = (page.extract_text() or "").strip()
             if text:
-                locator = EvidenceLocator(artifact_id=artifact.id, source_url=artifact.canonical_url, page=page_number, quote=text[:4000])
+                locator = EvidenceLocator(
+                    artifact_id=artifact.id,
+                    source_url=artifact.canonical_url,
+                    page=page_number,
+                    text_start=0,
+                    text_end=len(text),
+                    quote=text[:4000],
+                )
                 chunks.extend(self._split_chunk(artifact, text, page_number, locator, "pdf"))
         metadata = {str(key): str(value) for key, value in (reader.metadata or {}).items() if value is not None}
         return metadata.get("/Title"), sections, [], [], chunks, {"format": "pdf", "pages": len(reader.pages), "pdf_metadata": metadata}
@@ -113,7 +127,14 @@ class GenericDocumentPreparation(DocumentPreparationPort):
     def _json(self, artifact: RawArtifact, body: bytes) -> tuple[str | None, list[dict], list[dict], list[dict], list[ContentChunk], dict]:
         payload = json.loads(body.decode("utf-8"))
         text = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
-        locator = EvidenceLocator(artifact_id=artifact.id, source_url=artifact.canonical_url, fragment_id="json-root", quote=text[:4000])
+        locator = EvidenceLocator(
+            artifact_id=artifact.id,
+            source_url=artifact.canonical_url,
+            fragment_id="json-root",
+            text_start=0,
+            text_end=len(text),
+            quote=text[:4000],
+        )
         return (
             None,
             [],
@@ -127,15 +148,51 @@ class GenericDocumentPreparation(DocumentPreparationPort):
         self, artifact: RawArtifact, body: bytes, format_name: str
     ) -> tuple[str | None, list[dict], list[dict], list[dict], list[ContentChunk], dict]:
         text = unescape(body.decode("utf-8", errors="replace")).strip()
-        locator = EvidenceLocator(artifact_id=artifact.id, source_url=artifact.canonical_url, fragment_id="text-root", quote=text[:4000])
+        locator = EvidenceLocator(
+            artifact_id=artifact.id,
+            source_url=artifact.canonical_url,
+            fragment_id="text-root",
+            text_start=0,
+            text_end=len(text),
+            quote=text[:4000],
+        )
         return None, [], [], [], self._split_chunk(artifact, text, 0, locator, format_name), {"format": format_name}
 
     @staticmethod
     def _split_chunk(artifact: RawArtifact, text: str, ordinal: int, locator: EvidenceLocator, kind: str) -> list[ContentChunk]:
         limit = 6000
-        parts = [text[index : index + limit] for index in range(0, len(text), limit)]
+        parts = [(index, text[index : index + limit]) for index in range(0, len(text), limit)]
         return [
-            ContentChunk(id=uuid4().hex, artifact_id=artifact.id, text=part, ordinal=ordinal + offset, locator=locator, kind=kind)
-            for offset, part in enumerate(parts)
+            ContentChunk(
+                id=uuid4().hex,
+                artifact_id=artifact.id,
+                text=part,
+                ordinal=ordinal + offset,
+                locator=locator.model_copy(update={"text_start": start, "text_end": start + len(part), "quote": part[:4000]}),
+                kind=kind,
+            )
+            for offset, (start, part) in enumerate(parts)
             if part.strip()
         ]
+
+
+def _stable_selector(element: Any) -> str:
+    """Build a reproducible CSS-like locator for an HTML element."""
+
+    current = element
+    parts: list[str] = []
+    while getattr(current, "name", None) and len(parts) < 8:
+        element_id = getattr(current, "get", lambda *_args: None)("id")
+        if element_id:
+            parts.append(f"#{element_id}")
+            break
+        name = str(current.name)
+        parent = getattr(current, "parent", None)
+        siblings = [item for item in getattr(parent, "find_all", lambda *_args, **_kwargs: [])(name, recursive=False)] if parent else []
+        if len(siblings) > 1:
+            position = siblings.index(current) + 1
+            parts.append(f"{name}:nth-of-type({position})")
+        else:
+            parts.append(name)
+        current = parent
+    return " > ".join(reversed(parts)) or "document"

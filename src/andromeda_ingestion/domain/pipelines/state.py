@@ -15,18 +15,35 @@ ALLOWED_TRANSITIONS: Mapping[PipelineState, frozenset[PipelineState]] = {
     PipelineState.PREPARED: frozenset({PipelineState.EXTRACTING, PipelineState.FAILED}),
     PipelineState.EXTRACTING: frozenset({PipelineState.EXTRACTED, PipelineState.RETRYABLE, PipelineState.FAILED}),
     PipelineState.EXTRACTED: frozenset({PipelineState.VALIDATING, PipelineState.FAILED}),
-    PipelineState.VALIDATING: frozenset({PipelineState.VALIDATED, PipelineState.NEEDS_REVIEW, PipelineState.FAILED}),
+    PipelineState.VALIDATING: frozenset(
+        {PipelineState.VALIDATED, PipelineState.NEEDS_REVIEW, PipelineState.RETRYABLE, PipelineState.FAILED}
+    ),
     PipelineState.VALIDATED: frozenset({PipelineState.PUBLISHING, PipelineState.NEEDS_REVIEW, PipelineState.FAILED}),
     PipelineState.PUBLISHING: frozenset(
         {PipelineState.PUBLISHED, PipelineState.NEEDS_REVIEW, PipelineState.RETRYABLE, PipelineState.FAILED}
     ),
     PipelineState.RETRYABLE: frozenset(
-        {PipelineState.FETCHING, PipelineState.PREPARING, PipelineState.EXTRACTING, PipelineState.PUBLISHING, PipelineState.FAILED}
+        {
+            PipelineState.FETCHING,
+            PipelineState.PREPARING,
+            PipelineState.EXTRACTING,
+            PipelineState.VALIDATING,
+            PipelineState.PUBLISHING,
+            PipelineState.FAILED,
+        }
     ),
     PipelineState.NEEDS_REVIEW: frozenset({PipelineState.VALIDATING, PipelineState.PUBLISHING, PipelineState.FAILED}),
-    PipelineState.PUBLISHED: frozenset(),
-    PipelineState.SKIPPED_UNCHANGED: frozenset(),
-    PipelineState.FAILED: frozenset({PipelineState.FETCHING, PipelineState.PREPARING, PipelineState.EXTRACTING, PipelineState.PUBLISHING}),
+    PipelineState.PUBLISHED: frozenset({PipelineState.FETCHING}),
+    PipelineState.SKIPPED_UNCHANGED: frozenset({PipelineState.FETCHING}),
+    PipelineState.FAILED: frozenset(
+        {
+            PipelineState.FETCHING,
+            PipelineState.PREPARING,
+            PipelineState.EXTRACTING,
+            PipelineState.VALIDATING,
+            PipelineState.PUBLISHING,
+        }
+    ),
 }
 
 

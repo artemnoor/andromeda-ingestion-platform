@@ -25,7 +25,7 @@ from andromeda_ingestion.infrastructure.fetchers.fixture import FixtureFileFetch
 from andromeda_ingestion.infrastructure.fetchers.http import SafeHttpFetcher
 from andromeda_ingestion.infrastructure.knowledge_core.http import KnowledgeCoreHttpAdapter
 from andromeda_ingestion.infrastructure.preparation.generic import GenericDocumentPreparation
-from andromeda_ingestion.infrastructure.sources.discovery import StaticSourceDiscovery
+from andromeda_ingestion.infrastructure.sources.discovery import ConfiguredSourceDiscovery
 from andromeda_ingestion.infrastructure.storage.filesystem import FileSystemArtifactStorage
 
 
@@ -33,7 +33,7 @@ from andromeda_ingestion.infrastructure.storage.filesystem import FileSystemArti
 class AdapterContainer:
     settings: Settings
     storage: FileSystemArtifactStorage
-    discovery: StaticSourceDiscovery
+    discovery: ConfiguredSourceDiscovery
     http_fetcher: SafeHttpFetcher
     fixture_fetcher: FixtureFileFetcher
     preparer: GenericDocumentPreparation
@@ -52,11 +52,12 @@ class AdapterContainer:
         ai_router = MockAIProviderRouter()
         if settings.ai_provider != "mock" and settings.ai_endpoint and settings.ai_api_key:
             ai_router = MockAIProviderRouter(StructuredJsonHttpAIAdapter(settings.ai_endpoint, settings.ai_api_key, settings.ai_model))
+        http_fetcher = SafeHttpFetcher(settings)
         return cls(
             settings=settings,
             storage=FileSystemArtifactStorage(settings.artifact_storage_root),
-            discovery=StaticSourceDiscovery(),
-            http_fetcher=SafeHttpFetcher(settings),
+            discovery=ConfiguredSourceDiscovery(http_fetcher, settings.max_discovery_items),
+            http_fetcher=http_fetcher,
             fixture_fetcher=FixtureFileFetcher(settings.max_artifact_bytes, settings.fixture_root),
             preparer=GenericDocumentPreparation(settings.max_prepared_chunks),
             ai_router=ai_router,

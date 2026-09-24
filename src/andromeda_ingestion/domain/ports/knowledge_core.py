@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ..contracts import CorePublishResult, ObservationCandidate, OntologySnapshot, RawArtifact, SourceDefinition
+from ..contracts import CorePublishResult, ObservationCandidate, OntologySnapshot, RawArtifact, SourceDefinition, SourceRegistration
 
 
 class KnowledgeCorePort(Protocol):
     async def get_ontology_snapshot(self) -> OntologySnapshot: ...
 
-    async def register_source(self, source: SourceDefinition, artifact: RawArtifact) -> str: ...
+    async def register_source(self, source: SourceDefinition, artifact: RawArtifact) -> SourceRegistration: ...
 
     async def publish_observation(
         self,

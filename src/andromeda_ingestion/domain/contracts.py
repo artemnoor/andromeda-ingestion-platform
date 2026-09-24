@@ -357,6 +357,7 @@ class ObservationCandidate(StrictModel):
     confidence: Decimal = Field(ge=0, le=1)
     confidence_status: ConfidenceStatus = ConfidenceStatus.UNKNOWN
     ontology_version_id: str | None = None
+    source_document_id: str | None = None
     raw_payload: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -410,3 +411,11 @@ class CorePublishResult(StrictModel):
     review_id: str | None = None
     proposal_id: str | None = None
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceRegistration(StrictModel):
+    """Core identifiers for source and immutable document metadata."""
+
+    schema_version: str = SCHEMA_VERSION
+    source_id: str
+    source_document_id: str

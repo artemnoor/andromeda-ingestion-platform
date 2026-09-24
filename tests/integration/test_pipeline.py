@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from andromeda_ingestion.domain.contracts import DiscoveredItem, FetchedArtifact, SourceDefinition
 from andromeda_ingestion.infrastructure.sources.registry import demo_source_definitions
 
 
@@ -20,6 +21,25 @@ def _source_payload(source, fixture_path: str | None = None) -> dict:
         "allowed_hosts": source.allowed_hosts,
         "metadata": {**source.metadata, **({"fixture_path": fixture_path} if fixture_path else {})},
     }
+
+
+class SequenceFixtureFetcher:
+    def __init__(self, bodies: list[bytes]) -> None:
+        self.bodies = bodies
+        self.calls = 0
+
+    async def fetch(self, source: SourceDefinition, item: DiscoveredItem) -> FetchedArtifact:
+        body = self.bodies[min(self.calls, len(self.bodies) - 1)]
+        self.calls += 1
+        return FetchedArtifact(
+            requested_url=item.canonical_url,
+            final_url=item.canonical_url,
+            status_code=200,
+            content_type="text/html",
+            headers={"content-type": "text/html"},
+            body=body,
+            access_mode="fixture",
+        )
 
 
 def test_bmstu_program_end_to_end_and_idempotent_fetch(app_client, fixture_root: Path):
@@ -52,8 +72,35 @@ def test_bmstu_program_end_to_end_and_idempotent_fetch(app_client, fixture_root:
         json={"source_id": source.id, "item_id": item_id, "profile_code": "university_program"},
         headers={"X-Role": "EDITOR"},
     )
-    assert repeated_pipeline.json()["state"] == "PUBLISHED"
+    assert repeated_pipeline.json()["state"] == "SKIPPED_UNCHANGED"
     assert provider.calls == 1
+
+
+def test_published_pipeline_refreshes_changed_document(app_client, fixture_root: Path):
+    client, _ = app_client
+    source = demo_source_definitions(fixture_root)[0]
+    assert client.post("/api/v1/sources", json=_source_payload(source), headers={"X-Role": "EDITOR"}).status_code == 201
+    item_id = client.post(f"/api/v1/sources/{source.id}/discover", headers={"X-Role": "EDITOR"}).json()[0]["id"]
+    first_body = b"<html><body><h1>09.03.01 Informatics</h1><p>Tuition 385000</p></body></html>"
+    second_body = b"<html><body><h1>09.03.01 Informatics</h1><p>Tuition 410000 for 2027</p></body></html>"
+    fetcher = SequenceFixtureFetcher([first_body, second_body])
+    client.app.state.adapters.fixture_fetcher = fetcher
+
+    first = client.post(
+        "/api/v1/pipelines/run",
+        json={"source_id": source.id, "item_id": item_id, "profile_code": "university_program"},
+        headers={"X-Role": "EDITOR"},
+    ).json()
+    second = client.post(
+        "/api/v1/pipelines/run",
+        json={"source_id": source.id, "item_id": item_id, "profile_code": "university_program"},
+        headers={"X-Role": "EDITOR"},
+    ).json()
+
+    assert first["state"] == "PUBLISHED"
+    assert second["state"] == "PUBLISHED"
+    assert second["artifact_id"] != first["artifact_id"]
+    assert client.app.state.adapters.ai_router.provider.calls == 2
 
 
 def test_regulation_unknown_concept_goes_to_review(app_client, fixture_root: Path):
