@@ -1,0 +1,22 @@
+paths:
+  description: .ai-factory/DESCRIPTION.md
+  architecture: .ai-factory/ARCHITECTURE.md
+  plans: .ai-factory/plans
+  plan: .ai-factory/PLAN.md
+  security: .ai-factory/SECURITY.md
+  qa: .ai-factory/qa
+  archive: .ai-factory/archive
+
+language:
+  ui: ru
+  artifacts: ru
+  technical_terms: mixed
+
+git:
+  enabled: true
+  base_branch: main
+  create_branches: false
+  branch_prefix: feature/
+
+workflow:
+  plan_id_format: slug

@@ -1,0 +1,8 @@
+{
+  "fixture": "bmstu/admission-regulation-2026.pdf",
+  "document_type": "regulatory_document",
+  "expected_rule_keys": ["admission.additional_exam_bonus"],
+  "expected_threshold": 90,
+  "expected_evidence_page": 1,
+  "expected_unknown_concepts": []
+}

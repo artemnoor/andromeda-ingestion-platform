@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: andromeda_ingestion
+      POSTGRES_USER: andromeda_ingestion
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-andromeda_ingestion_local_only}
+    volumes:
+      - ingestion_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U andromeda_ingestion -d andromeda_ingestion"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: .
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+asyncpg://andromeda_ingestion:${POSTGRES_PASSWORD:-andromeda_ingestion_local_only}@postgres:5432/andromeda_ingestion
+      ARTIFACT_STORAGE_ROOT: /app/var/artifacts
+      FIXTURE_ROOT: /app/fixtures
+      API_DOCS_ENABLED: "true"
+      MOCK_AI_ENABLED: ${MOCK_AI_ENABLED:-true}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      KNOWLEDGE_CORE_URL: ${KNOWLEDGE_CORE_URL:-http://host.docker.internal:8000}
+      KNOWLEDGE_CORE_ROLE: ${KNOWLEDGE_CORE_ROLE:-EDITOR}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-c", "alembic upgrade head && uvicorn andromeda_ingestion.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8010:8000"
+    volumes:
+      - ingestion_artifacts:/app/var/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  ingestion_postgres_data:
+  ingestion_artifacts:
+

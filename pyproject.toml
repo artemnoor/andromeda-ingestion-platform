@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools==75.6.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "andromeda-ingestion-platform"
+version = "0.1.0"
+description = "Evidence-first ingestion platform for Andromeda Knowledge Core"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic==1.14.0",
+  "asyncpg==0.30.0",
+  "beautifulsoup4==4.12.3",
+  "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "prometheus-client==0.22.1",
+  "pydantic==2.10.6",
+  "pydantic-settings==2.7.1",
+  "pypdf==5.1.0",
+  "sqlalchemy==2.0.36",
+  "aiosqlite==0.20.0",
+  "uvicorn[standard]==0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "hypothesis==6.125.1",
+  "mypy==1.20.2",
+  "pytest==8.3.4",
+  "pytest-asyncio==0.25.3",
+  "reportlab==4.2.5",
+  "ruff==0.16.5",
+]
+browser = ["playwright==1.49.1"]
+
+[project.scripts]
+andromeda-ingestion-seed = "scripts.seed_demo:main"
+andromeda-ingestion-demo = "scripts.run_demo:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+exclude = [".venv", "build", "dist", "alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008", "E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+disallow_untyped_defs = true
+warn_return_any = false
+disallow_any_generics = false
+plugins = []
+exclude = "(^|/)(tests|alembic)/"
+
+[tool.coverage.run]
+source = ["andromeda_ingestion"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
