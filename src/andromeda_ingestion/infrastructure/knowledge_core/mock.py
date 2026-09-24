@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from andromeda_ingestion.domain.contracts import (
+    CandidateRule,
     CorePublishResult,
     ObservationCandidate,
     OntologySnapshot,
@@ -21,6 +22,7 @@ class MockKnowledgeCoreAdapter(KnowledgeCorePort):
         self.sources: dict[str, dict] = {}
         self.source_documents: dict[str, dict] = {}
         self.observations: dict[str, dict] = {}
+        self.rule_candidates: dict[str, dict] = {}
         self.ontology = OntologySnapshot(
             ontology_version_id="ontology-demo-v1",
             version_code="v1",
@@ -64,4 +66,32 @@ class MockKnowledgeCoreAdapter(KnowledgeCorePort):
             details={"candidate_kind": candidate.candidate_kind, "correlation_id": correlation_id, "raw_payload": candidate.raw_payload},
         )
         self.observations[idempotency_key] = result.model_dump(mode="json")
+        return result
+
+    async def publish_rule_candidate(
+        self,
+        source_id: str,
+        source_document_id: str,
+        candidate: CandidateRule,
+        *,
+        idempotency_key: str,
+        correlation_id: str,
+    ) -> CorePublishResult:
+        if idempotency_key in self.rule_candidates:
+            return CorePublishResult.model_validate(self.rule_candidates[idempotency_key])
+        needs_review = candidate.confidence < self.confidence_review_threshold
+        result = CorePublishResult(
+            candidate_id=candidate.candidate_id,
+            core_source_id=source_id,
+            core_rule_id=f"core-rule-{uuid4().hex[:12]}",
+            core_provenance_id=f"core-provenance-{uuid4().hex[:12]}",
+            status="NEEDS_REVIEW" if needs_review else "DRAFT",
+            review_id=f"core-review-{uuid4().hex[:12]}" if needs_review else None,
+            details={
+                "candidate_kind": "rule",
+                "source_document_id": source_document_id,
+                "correlation_id": correlation_id,
+            },
+        )
+        self.rule_candidates[idempotency_key] = result.model_dump(mode="json")
         return result

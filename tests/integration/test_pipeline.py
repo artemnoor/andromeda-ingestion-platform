@@ -154,3 +154,34 @@ def test_ambiguous_normative_rule_is_review_bound(app_client, fixture_root: Path
     assert pipeline["state"] == "NEEDS_REVIEW"
     candidates = client.get(f"/api/v1/extractions/{pipeline['extraction_id']}/candidates").json()
     assert any(item["candidate_kind"] == "rule" and item["status"] == "NEEDS_REVIEW" for item in candidates)
+    assert client.app.state.adapters.core.rule_candidates
+    assert not client.app.state.adapters.core.observations
+
+
+def test_needs_review_pipeline_refreshes_changed_document(app_client, fixture_root: Path):
+    client, _ = app_client
+    source = demo_source_definitions(fixture_root)[4]
+    assert client.post("/api/v1/sources", json=_source_payload(source), headers={"X-Role": "EDITOR"}).status_code == 201
+    item_id = client.post(f"/api/v1/sources/{source.id}/discover", headers={"X-Role": "EDITOR"}).json()[0]["id"]
+    client.app.state.adapters.fixture_fetcher = SequenceFixtureFetcher(
+        [
+            (fixture_root / "bmstu" / "admission-regulation-2026-ambiguous.pdf").read_bytes(),
+            (fixture_root / "bmstu" / "admission-regulation-2026.pdf").read_bytes(),
+        ]
+    )
+    first = client.post(
+        "/api/v1/pipelines/run",
+        json={"source_id": source.id, "item_id": item_id, "profile_code": "regulatory_document"},
+        headers={"X-Role": "EDITOR"},
+    ).json()
+    assert first["state"] == "NEEDS_REVIEW"
+    second = client.post(
+        "/api/v1/pipelines/run",
+        json={"source_id": source.id, "item_id": item_id, "profile_code": "regulatory_document"},
+        headers={"X-Role": "EDITOR"},
+    ).json()
+    assert second["state"] == "PUBLISHED"
+    assert second["artifact_id"] != first["artifact_id"]
+    assert client.app.state.adapters.ai_router.provider.calls == 2
+    old_candidates = client.get(f"/api/v1/extractions/{first['extraction_id']}/candidates").json()
+    assert any(item["status"] == "NEEDS_REVIEW" for item in old_candidates)

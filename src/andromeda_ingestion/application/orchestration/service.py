@@ -51,9 +51,11 @@ class PipelineOrchestrator:
     ) -> dict:
         key = idempotency_key or f"pipeline:{source_id}:{item_id}:{profile_code or 'auto'}"
         existing = await self.repository.get_pipeline_by_key(key)
-        if existing and existing["state"] == PipelineState.NEEDS_REVIEW.value:
-            return existing
-        if existing and existing["state"] in {PipelineState.PUBLISHED.value, PipelineState.SKIPPED_UNCHANGED.value}:
+        if existing and existing["state"] in {
+            PipelineState.PUBLISHED.value,
+            PipelineState.SKIPPED_UNCHANGED.value,
+            PipelineState.NEEDS_REVIEW.value,
+        }:
             run = await self._start_refresh(existing)
         elif existing and existing["state"] == PipelineState.RETRYABLE.value:
             run = await self._start_retry(existing)

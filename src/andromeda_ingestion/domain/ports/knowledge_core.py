@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ..contracts import CorePublishResult, ObservationCandidate, OntologySnapshot, RawArtifact, SourceDefinition, SourceRegistration
+from ..contracts import (
+    CandidateRule,
+    CorePublishResult,
+    ObservationCandidate,
+    OntologySnapshot,
+    RawArtifact,
+    SourceDefinition,
+    SourceRegistration,
+)
 
 
 class KnowledgeCorePort(Protocol):
@@ -16,6 +24,16 @@ class KnowledgeCorePort(Protocol):
         self,
         source_id: str,
         candidate: ObservationCandidate,
+        *,
+        idempotency_key: str,
+        correlation_id: str,
+    ) -> CorePublishResult: ...
+
+    async def publish_rule_candidate(
+        self,
+        source_id: str,
+        source_document_id: str,
+        candidate: CandidateRule,
         *,
         idempotency_key: str,
         correlation_id: str,

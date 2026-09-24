@@ -32,7 +32,7 @@ ALLOWED_TRANSITIONS: Mapping[PipelineState, frozenset[PipelineState]] = {
             PipelineState.FAILED,
         }
     ),
-    PipelineState.NEEDS_REVIEW: frozenset({PipelineState.VALIDATING, PipelineState.PUBLISHING, PipelineState.FAILED}),
+    PipelineState.NEEDS_REVIEW: frozenset({PipelineState.FETCHING, PipelineState.VALIDATING, PipelineState.PUBLISHING, PipelineState.FAILED}),
     PipelineState.PUBLISHED: frozenset({PipelineState.FETCHING}),
     PipelineState.SKIPPED_UNCHANGED: frozenset({PipelineState.FETCHING}),
     PipelineState.FAILED: frozenset(

@@ -7,6 +7,7 @@ from typing import Any, cast
 import httpx
 
 from andromeda_ingestion.domain.contracts import (
+    CandidateRule,
     CorePublishResult,
     ObservationCandidate,
     OntologySnapshot,
@@ -100,6 +101,35 @@ class KnowledgeCoreHttpAdapter(KnowledgeCorePort):
             core_source_id=source_id,
             core_observation_id=response.get("id"),
             status=str(response.get("status", "PUBLISHED")),
+            review_id=response.get("review_id"),
+            proposal_id=response.get("proposal_id"),
+            details=response,
+        )
+
+    async def publish_rule_candidate(
+        self,
+        source_id: str,
+        source_document_id: str,
+        candidate: CandidateRule,
+        *,
+        idempotency_key: str,
+        correlation_id: str,
+    ) -> CorePublishResult:
+        payload = {
+            **candidate.model_dump(mode="json"),
+            "source_id": source_id,
+            "source_document_id": source_document_id,
+            "evidence": [item.model_dump(mode="json") for item in candidate.evidence],
+        }
+        response = await self._request(
+            "POST", "/api/v1/rules/candidates", json=payload, idempotency_key=idempotency_key, correlation_id=correlation_id
+        )
+        return CorePublishResult(
+            candidate_id=candidate.candidate_id,
+            core_source_id=source_id,
+            core_rule_id=response.get("rule_id"),
+            core_provenance_id=response.get("provenance_id"),
+            status=str(response.get("status", "DRAFT")),
             review_id=response.get("review_id"),
             proposal_id=response.get("proposal_id"),
             details=response,

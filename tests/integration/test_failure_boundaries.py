@@ -57,6 +57,17 @@ class UnavailableCore:
     ) -> CorePublishResult:
         raise UpstreamError("CORE_UNAVAILABLE", "Core is unavailable", {})
 
+    async def publish_rule_candidate(
+        self,
+        source_id: str,
+        source_document_id: str,
+        candidate,
+        *,
+        idempotency_key: str,
+        correlation_id: str,
+    ) -> CorePublishResult:
+        raise UpstreamError("CORE_UNAVAILABLE", "Core is unavailable", {})
+
 
 def test_invalid_ai_output_is_not_published(app_client, fixture_root: Path):
     client, _ = app_client

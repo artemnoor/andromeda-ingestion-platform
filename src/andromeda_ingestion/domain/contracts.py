@@ -407,6 +407,8 @@ class CorePublishResult(StrictModel):
     candidate_id: str
     core_source_id: str | None = None
     core_observation_id: str | None = None
+    core_rule_id: str | None = None
+    core_provenance_id: str | None = None
     status: str
     review_id: str | None = None
     proposal_id: str | None = None

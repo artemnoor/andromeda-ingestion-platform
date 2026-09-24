@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from andromeda_ingestion.domain.common import CandidateStatus, ConfidenceStatus
-from andromeda_ingestion.domain.contracts import CandidateEntity, ObservationCandidate, RawArtifact, SourceDefinition
+from andromeda_ingestion.domain.contracts import CandidateEntity, CandidateRule, ObservationCandidate, RawArtifact, SourceDefinition
 from andromeda_ingestion.domain.ports.knowledge_core import KnowledgeCorePort
 from andromeda_ingestion.domain.ports.repositories import IngestionRepositoryPort
 
@@ -22,15 +22,26 @@ class PublishingService:
         registration = await self.core.register_source(source, artifact)
         results: list[dict] = []
         for row in await self.repository.list_candidates(extraction_id):
-            if row["status"] == CandidateStatus.REJECTED.value or row.get("core_observation_id"):
+            published_id = row.get("core_rule_id") if row["candidate_kind"] == "rule" else row.get("core_observation_id")
+            if row["status"] == CandidateStatus.REJECTED.value or published_id:
                 continue
-            candidate = self._observation(row, registration.source_document_id)
-            result = await self.core.publish_observation(
-                registration.source_id,
-                candidate,
-                idempotency_key=f"ingestion:{row['id']}",
-                correlation_id=correlation_id,
-            )
+            if row["candidate_kind"] == "rule":
+                rule_candidate = self._rule(row)
+                result = await self.core.publish_rule_candidate(
+                    registration.source_id,
+                    registration.source_document_id,
+                    rule_candidate,
+                    idempotency_key=f"ingestion:rule:{row['id']}",
+                    correlation_id=correlation_id,
+                )
+            else:
+                observation_candidate = self._observation(row, registration.source_document_id)
+                result = await self.core.publish_observation(
+                    registration.source_id,
+                    observation_candidate,
+                    idempotency_key=f"ingestion:observation:{row['id']}",
+                    correlation_id=correlation_id,
+                )
             status = (
                 CandidateStatus.NEEDS_REVIEW.value
                 if result.review_id or result.status == "NEEDS_REVIEW"
@@ -42,6 +53,8 @@ class PublishingService:
                     "status": status,
                     "core_source_id": registration.source_id,
                     "core_observation_id": result.core_observation_id,
+                    "core_rule_id": result.core_rule_id,
+                    "core_provenance_id": result.core_provenance_id,
                     "review_id": result.review_id,
                     "proposal_id": result.proposal_id,
                 },
@@ -50,6 +63,19 @@ class PublishingService:
             results.append({"candidate": updated, "core": result.model_dump(mode="json")})
         await self.repository.commit()
         return results
+
+    @staticmethod
+    def _rule(row: dict) -> CandidateRule:
+        payload = row["payload_json"]
+        return CandidateRule.model_validate(
+            {
+                **payload,
+                "candidate_id": row["id"],
+                "confidence": row["confidence"],
+                "confidence_status": row["confidence_status"],
+                "evidence": row.get("evidence", []),
+            }
+        )
 
     @staticmethod
     def _observation(row: dict, source_document_id: str) -> ObservationCandidate:

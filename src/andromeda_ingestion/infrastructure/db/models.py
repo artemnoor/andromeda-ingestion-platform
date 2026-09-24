@@ -146,6 +146,8 @@ class ExtractionCandidateModel(Base):
     evidence_json: Mapped[list] = mapped_column(JSON, default=list)
     core_source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     core_observation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    core_rule_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    core_provenance_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     review_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     proposal_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     row_version: Mapped[int] = mapped_column(Integer, default=1)
