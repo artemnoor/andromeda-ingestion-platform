@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
+from andromeda_ingestion.application.container import AdapterContainer
 from andromeda_ingestion.domain.contracts import (
     ContentChunk,
     EvidenceLocator,
@@ -16,6 +17,26 @@ from andromeda_ingestion.domain.contracts import (
 )
 from andromeda_ingestion.domain.errors import UpstreamError, ValidationError
 from andromeda_ingestion.infrastructure.ai.http_json import StructuredJsonHttpAIAdapter
+from andromeda_ingestion.infrastructure.config import Settings
+
+
+def test_ai_timeout_setting_is_passed_to_provider_adapter(tmp_path) -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        mock_ai_enabled=False,
+        ai_provider="polza",
+        ai_endpoint="https://ai.example/chat/completions",
+        ai_api_key="test-key",
+        ai_timeout_seconds=180,
+        artifact_storage_root=str(tmp_path / "artifacts"),
+        fixture_root=str(tmp_path),
+    )
+
+    container = AdapterContainer.from_settings(settings)
+
+    assert isinstance(container.ai_router.provider, StructuredJsonHttpAIAdapter)
+    assert container.ai_router.provider.timeout_seconds == 180
 
 
 @pytest.mark.asyncio

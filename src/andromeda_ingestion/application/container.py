@@ -56,6 +56,7 @@ class AdapterContainer:
                     settings.ai_endpoint,
                     settings.ai_api_key,
                     settings.ai_model,
+                    timeout_seconds=settings.ai_timeout_seconds,
                     provider=settings.ai_provider,
                     structured_output_mode=settings.ai_structured_output_mode,
                 )

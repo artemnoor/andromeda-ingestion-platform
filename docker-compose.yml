@@ -23,6 +23,11 @@ services:
       API_DOCS_ENABLED: "true"
       MOCK_AI_ENABLED: ${MOCK_AI_ENABLED:-true}
       AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_ENDPOINT: ${AI_ENDPOINT:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-configured-structured-extractor}
+      AI_STRUCTURED_OUTPUT_MODE: ${AI_STRUCTURED_OUTPUT_MODE:-json_object}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
       KNOWLEDGE_CORE_URL: ${KNOWLEDGE_CORE_URL:-http://host.docker.internal:8000}
       KNOWLEDGE_CORE_ROLE: ${KNOWLEDGE_CORE_ROLE:-EDITOR}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
@@ -43,4 +48,3 @@ services:
 volumes:
   ingestion_postgres_data:
   ingestion_artifacts:
-

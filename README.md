@@ -29,6 +29,29 @@ double, so it is runnable without paid credentials. Set `APP_ENV=production`,
 `json_schema` only for providers/API modes that support strict JSON Schema),
 and `KNOWLEDGE_CORE_URL` to use external adapters.
 
+### Test a real AI provider through Polza
+
+Copy `.env.example` to `.env`, then set the following values in `.env`:
+
+```ini
+MOCK_AI_ENABLED=true
+AI_PROVIDER=polza
+AI_ENDPOINT=https://polza.ai/api/v1/chat/completions
+AI_API_KEY=<your private Polza key>
+AI_MODEL=deepseek/deepseek-v4.1-flash
+AI_STRUCTURED_OUTPUT_MODE=json_object
+AI_TIMEOUT_SECONDS=180
+```
+
+`MOCK_AI_ENABLED=true` keeps the local Knowledge Core double enabled in
+development; the non-`mock` `AI_PROVIDER` and credentials activate the real AI
+adapter. The API key is read from `.env` and passed to the API container by
+Compose. DeepSeek extraction can take longer than the default 60 seconds, so
+raise `AI_TIMEOUT_SECONDS` as needed (180 seconds worked for the demo program).
+After starting/recreating the service with `docker compose up -d --build api`, run `docker compose exec api python -m scripts.run_demo` to make
+two live extraction requests against the demo program and regulation fixtures.
+This consumes Polza API usage. Never commit or share `.env`.
+
 ## Local verification
 
 ```powershell

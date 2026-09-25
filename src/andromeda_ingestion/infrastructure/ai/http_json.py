@@ -98,7 +98,10 @@ class StructuredJsonHttpAIAdapter(DocumentUnderstandingPort):
             response = await client.post(self.endpoint, headers={"Authorization": f"Bearer {self.api_key}"}, json=request)
             response.raise_for_status()
         except httpx.TimeoutException as exc:
-            logger.warning("ai_provider_timeout", extra={"endpoint": self.endpoint, "model": self.model})
+            logger.warning(
+                "ai_provider_timeout",
+                extra={"endpoint": self.endpoint, "model": self.model, "timeout_seconds": self.timeout_seconds},
+            )
             raise UpstreamError("AI_TIMEOUT", "Configured AI provider request timed out", {"provider_endpoint": self.endpoint}) from exc
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
