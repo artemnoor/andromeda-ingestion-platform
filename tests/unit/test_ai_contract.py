@@ -1,10 +1,13 @@
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
 from andromeda_ingestion.application.container import AdapterContainer
+from andromeda_ingestion.application.extraction.service import ExtractionService
 from andromeda_ingestion.domain.contracts import (
     ContentChunk,
     EvidenceLocator,
@@ -37,6 +40,17 @@ def test_ai_timeout_setting_is_passed_to_provider_adapter(tmp_path) -> None:
 
     assert isinstance(container.ai_router.provider, StructuredJsonHttpAIAdapter)
     assert container.ai_router.provider.timeout_seconds == 180
+
+
+def test_ordinary_test_settings_cannot_select_live_ai_from_dotenv() -> None:
+    settings = Settings(app_env="test")
+    container = AdapterContainer.from_settings(settings)
+
+    assert settings.ai_provider == "mock"
+    assert not settings.ai_endpoint
+    assert not settings.ai_api_key
+    assert settings.mock_ai_enabled is True
+    assert not isinstance(container.ai_router.provider, StructuredJsonHttpAIAdapter)
 
 
 @pytest.mark.asyncio
@@ -117,6 +131,16 @@ async def test_structured_ai_adapter_sends_complete_ontology_snapshot() -> None:
     assert '"kinds": ["comparison"]' in system_content
     assert '"type": "object"' in system_content
     assert "UNTRUSTED" in user_content
+    document_json = user_content.partition("\n")[2].partition("\nAll chunks inherit")[0]
+    document_bundle = json.loads(document_json)
+    assert document_bundle["artifact"] == {
+        "artifact_id": artifact.id,
+        "canonical_url": artifact.canonical_url,
+        "final_url": artifact.final_url,
+    }
+    assert document_bundle["chunks"][0]["text"] == "data"
+    assert document_bundle["chunks"][0]["locator"]["quote"] == "data"
+    assert "source_url" not in document_bundle["chunks"][0]["locator"]
     assert payload["response_format"] == {"type": "json_object"}
     assert result.artifact_id == artifact.id
     assert result.profile_id == "profile-1"
@@ -210,7 +234,7 @@ async def test_structured_ai_adapter_maps_provider_statuses(status: int, expecte
 
 
 @pytest.mark.asyncio
-async def test_structured_ai_adapter_maps_timeout() -> None:
+async def test_structured_ai_adapter_maps_timeout_and_logs_safe_request_metrics(caplog) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("provider timeout", request=request)
 
@@ -220,6 +244,14 @@ async def test_structured_ai_adapter_maps_timeout() -> None:
         await adapter.extract(_minimal_context())
     await client.aclose()
     assert error.value.code == "AI_TIMEOUT"
+    request_record = next(record for record in caplog.records if record.message == "ai_provider_request_started")
+    timeout_record = next(record for record in caplog.records if record.message == "ai_provider_timeout")
+    assert request_record.document_chunk_count == 1
+    assert request_record.document_character_count == len("data")
+    assert request_record.request_bytes > 0
+    assert timeout_record.provider_elapsed_ms >= 0
+    assert timeout_record.request_bytes == request_record.request_bytes
+    assert not hasattr(request_record, "api_key")
 
 
 @pytest.mark.asyncio
@@ -314,3 +346,66 @@ async def test_malformed_semantic_field_is_rejected() -> None:
         await adapter.extract(_minimal_context())
     await client.aclose()
     assert error.value.code == "AI_INVALID_OUTPUT"
+
+
+@pytest.mark.asyncio
+async def test_invalid_semantic_output_logs_only_safe_shape_diagnostics(caplog) -> None:
+    hidden_value = "provider-response-must-not-be-logged"
+    invalid_output = {"rules": [], "unexpected_secret": hidden_value}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(invalid_output)}}]},
+            request=request,
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = StructuredJsonHttpAIAdapter("https://ai.example/extract", "fake-key", "model-1", client=client)
+    with pytest.raises(ValidationError) as error:
+        await adapter.extract(_minimal_context())
+    await client.aclose()
+
+    record = next(item for item in caplog.records if item.message == "ai_invalid_semantic_output")
+    assert error.value.code == "AI_INVALID_OUTPUT"
+    assert record.response_top_level_keys == ["rules", "unexpected_secret"]
+    assert all("input" not in item for item in record.validation_errors)
+    assert hidden_value not in caplog.text
+    assert "fake-key" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_truncated_prepared_document_is_rejected_before_provider_call() -> None:
+    artifact = RawArtifact(
+        id="artifact-truncated",
+        source_id="source-1",
+        requested_url="https://example.com/document",
+        canonical_url="https://example.com/document",
+        final_url="https://example.com/document",
+        retrieved_at=datetime.now(UTC),
+        checksum="a" * 64,
+        raw_content_location="source-1/aa.bin",
+        byte_size=4,
+        created_at=datetime.now(UTC),
+    )
+    prepared = PreparedDocument(
+        id="prepared-truncated",
+        artifact_id=artifact.id,
+        preparation_version="generic-2",
+        content_fingerprint="b" * 64,
+        document_type="document",
+        structural_hints={"truncated_chunks": True},
+        prepared_at=datetime.now(UTC),
+    )
+    repository = SimpleNamespace(
+        get_artifact=AsyncMock(return_value=artifact.model_dump(mode="json")),
+        get_prepared=AsyncMock(return_value=prepared.model_dump(mode="json")),
+    )
+    router = SimpleNamespace(provider_for=AsyncMock())
+    service = ExtractionService(repository, SimpleNamespace(), router, SimpleNamespace(), SimpleNamespace())
+
+    with pytest.raises(ValidationError) as error:
+        await service.extract(artifact.id)
+
+    assert error.value.code == "PREPARED_DOCUMENT_TRUNCATED"
+    router.provider_for.assert_not_awaited()

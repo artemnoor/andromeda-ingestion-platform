@@ -36,6 +36,7 @@ browser = ["playwright==1.49.1"]
 [project.scripts]
 andromeda-ingestion-seed = "scripts.seed_demo:main"
 andromeda-ingestion-demo = "scripts.run_demo:main"
+andromeda-live-bmstu = "scripts.live_bmstu_e2e:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -36,6 +36,29 @@ def validate_rule_dsl(node: Any, max_depth: int = 30) -> list[dict[str, str]]:
     return errors
 
 
+def validate_rule_effects(effects: Any) -> list[dict[str, str]]:
+    """Validate effect shape required by the Knowledge Core rule contract."""
+    if not isinstance(effects, list) or not effects:
+        return [{"path": "effects", "message": "At least one declarative effect is required."}]
+    errors: list[dict[str, str]] = []
+    for index, effect in enumerate(effects):
+        path = f"effects[{index}]"
+        if not isinstance(effect, Mapping):
+            errors.append({"path": path, "message": "Effect must be an object."})
+            continue
+        effect_type = effect.get("type")
+        if effect_type not in EFFECTS:
+            errors.append({"path": f"{path}.type", "message": f"Unknown effect '{effect_type}'."})
+        if not isinstance(effect.get("target"), str) or not effect["target"]:
+            errors.append({"path": f"{path}.target", "message": "Effect target is required."})
+        if effect_type not in {"MARK_ELIGIBLE", "MARK_INELIGIBLE"} and "value" not in effect:
+            errors.append({"path": f"{path}.value", "message": "This effect requires a value."})
+        value = effect.get("value")
+        if isinstance(value, dict) and "kind" in value:
+            errors.extend({**error, "path": f"{path}.{error['path']}"} for error in validate_rule_dsl(value))
+    return errors
+
+
 def _validate(node: Any, path: str, depth: int, max_depth: int, errors: list[dict[str, str]]) -> None:
     if depth > max_depth:
         errors.append({"path": path, "message": f"DSL nesting exceeds {max_depth} levels"})

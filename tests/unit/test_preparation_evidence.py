@@ -38,6 +38,21 @@ async def test_html_preparation_emits_stable_selector_and_exact_chunk_offsets() 
 
 
 @pytest.mark.asyncio
+async def test_html_preparation_excludes_page_chrome_and_nested_container_duplicates() -> None:
+    body = (
+        b"<html><body><nav>Navigation noise</nav><main id='program'><article><section>"
+        b"<h1>Program title</h1><p>Admission requirement</p></section></article></main>"
+        b"<footer>Footer noise</footer></body></html>"
+    )
+
+    prepared = await GenericDocumentPreparation().prepare(_artifact("text/html"), body)
+
+    assert [chunk.text for chunk in prepared.content_chunks] == ["Program title", "Admission requirement"]
+    assert prepared.preparation_version == "generic-2"
+    assert prepared.structural_hints["content_root"] == "#program"
+
+
+@pytest.mark.asyncio
 async def test_json_preparation_preserves_root_fragment_and_offsets() -> None:
     prepared = await GenericDocumentPreparation().prepare(_artifact("application/json", "https://example.com/data.json"), b'{"code": "09.03.01"}')
 

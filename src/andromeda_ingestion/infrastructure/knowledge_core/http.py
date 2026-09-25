@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 import httpx
@@ -18,6 +19,8 @@ from andromeda_ingestion.domain.contracts import (
 from andromeda_ingestion.domain.errors import UpstreamError
 from andromeda_ingestion.domain.ports.knowledge_core import KnowledgeCorePort
 from andromeda_ingestion.infrastructure.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeCoreHttpAdapter(KnowledgeCorePort):
@@ -167,8 +170,18 @@ class KnowledgeCoreHttpAdapter(KnowledgeCorePort):
             raise
         except (httpx.HTTPError, ValueError) as exc:
             status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+            if status_code == 422:
+                code = "CORE_VALIDATION_FAILED"
+            elif status_code in {401, 403}:
+                code = "CORE_AUTH_FAILED"
+            else:
+                code = "CORE_UNAVAILABLE"
+            logger.warning(
+                "knowledge_core_request_failed",
+                extra={"context": {"path": path, "status_code": status_code, "failure_code": code}},
+            )
             raise UpstreamError(
-                "CORE_UNAVAILABLE",
+                code,
                 "Knowledge Core request failed",
                 {"path": path, "status_code": status_code},
             ) from exc

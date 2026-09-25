@@ -8,11 +8,28 @@ import sys
 from datetime import UTC, datetime
 from typing import Any
 
-_SENSITIVE_KEYS = {"authorization", "token", "secret", "password", "prompt", "body", "raw_content", "raw_payload"}
+_SENSITIVE_KEY_MARKERS = (
+    "authorization",
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "secret",
+    "password",
+    "prompt",
+    "body",
+    "raw_content",
+    "raw_payload",
+    "credential",
+)
+_SAFE_METRIC_KEYS = {"api_key_present", "token_usage", "prompt_tokens", "completion_tokens", "total_tokens"}
+_STANDARD_LOG_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__) | {"message", "asctime"}
 
 
 def _safe(value: Any, key: str | None = None) -> Any:
-    if key and any(marker in key.casefold() for marker in _SENSITIVE_KEYS):
+    normalized_key = key.casefold() if key else ""
+    if normalized_key and normalized_key not in _SAFE_METRIC_KEYS and any(
+        marker in normalized_key for marker in _SENSITIVE_KEY_MARKERS
+    ):
         return "[REDACTED]"
     if isinstance(value, dict):
         return {str(k): _safe(v, str(k)) for k, v in value.items()}
@@ -36,6 +53,14 @@ class JsonFormatter(logging.Formatter):
             safe_context = _safe(context)
             if isinstance(safe_context, dict):
                 payload.update(safe_context)
+        extras = {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in _STANDARD_LOG_RECORD_FIELDS and key not in {"context", "message"} and not key.startswith("_")
+        }
+        safe_extras = _safe(extras)
+        if isinstance(safe_extras, dict):
+            payload.update(safe_extras)
         if record.exc_info:
             exception_type = record.exc_info[0].__name__ if record.exc_info[0] is not None else "Exception"
             payload["exception"] = {"type": exception_type, "message": str(record.exc_info[1])}

@@ -17,7 +17,12 @@ class PreparationService:
     async def prepare_artifact(self, artifact_id: str) -> dict:
         artifact = raw_artifact(await self.repository.get_artifact(artifact_id))
         existing = await self.repository.get_prepared(artifact_id)
-        if existing and existing["content_fingerprint"]:
+        expected_version = getattr(self.preparer, "preparation_version", None)
+        if (
+            existing
+            and existing["content_fingerprint"]
+            and (expected_version is None or existing["preparation_version"] == expected_version)
+        ):
             return existing
         body = await self.storage.get(artifact.raw_content_location, artifact.checksum)
         prepared = await self.preparer.prepare(artifact, body)

@@ -16,7 +16,7 @@ from andromeda_ingestion.application.extraction.serialization import (
 from andromeda_ingestion.application.preparation.service import PreparationService
 from andromeda_ingestion.domain.changes.fingerprints import natural_key
 from andromeda_ingestion.domain.contracts import ExtractionContext, ExtractionProfile, OntologySnapshot
-from andromeda_ingestion.domain.errors import UpstreamError
+from andromeda_ingestion.domain.errors import UpstreamError, ValidationError
 from andromeda_ingestion.domain.ports.ai import AIProviderRouterPort
 from andromeda_ingestion.domain.ports.knowledge_core import KnowledgeCorePort
 from andromeda_ingestion.domain.ports.repositories import IngestionRepositoryPort
@@ -54,6 +54,12 @@ class ExtractionService:
         if not prepared_data:
             prepared_data = await self.preparation.prepare_artifact(artifact_id)
         prepared = prepared_document(prepared_data)
+        if prepared.structural_hints.get("truncated_chunks"):
+            raise ValidationError(
+                "PREPARED_DOCUMENT_TRUNCATED",
+                "Extraction is blocked because preparation truncated the source document.",
+                {"artifact_id": artifact.id, "preparation_version": prepared.preparation_version},
+            )
         profile_code = profile_code or str(artifact.metadata.get("profile_code", "generic"))
         profile_data = await self.ensure_profile(profile_code)
         profile = extraction_profile(profile_data)

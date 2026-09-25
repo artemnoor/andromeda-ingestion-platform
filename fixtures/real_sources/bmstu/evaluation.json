@@ -1,0 +1,135 @@
+{
+  "dataset_id": "bmstu-admissions-2026-2027-v1",
+  "publisher": "МГТУ им. Н.Э. Баумана",
+  "as_of": "2026-09-25",
+  "sources": [
+    {
+      "id": "bmstu-iuk5-2026-program-page",
+      "stable_key": "bmstu.kf.iuk5.programs.evidence-v2",
+      "url": "https://kf.bmstu.ru/edu/kf/iuk/iuk5",
+      "source_type": "WEB_PAGE",
+      "document_kind": "program",
+      "profile_code": "bmstu_iuk5_program_2026",
+      "profile_prompt_version": "bmstu-iuk5-program-2026-v1",
+      "run_version": "evidence-v2",
+      "profile_instructions": "Extract only the 09.03.01 bachelor program described on this official IUK5 page. Return only explicit facts for this program: its code, official program/profile name, nominal study duration, and department code if the source states it. Do not emit 09.03.02 or 09.04.01 candidates, relations, broad department claims, or inferred facts. Every EvidenceRef must contain one continuous verbatim quote copied exactly from a single supplied chunk; do not paraphrase, insert ellipses, or combine passages. Use the chunk's exact artifact ID, source URL, and selector. If a fact cannot be supported by an exact quote, omit it. Do not infer validity dates.",
+      "run_live": true,
+      "golden_expectations": [
+        {"field": "program code", "value": "09.03.01", "kind": "identifier"},
+        {"field": "official bachelor program name", "value": "Информатика и вычислительная техника по профилю «Системы обработки информации и управления»", "kind": "text"},
+        {"field": "study duration", "value": "4", "kind": "number"}
+      ]
+    },
+    {
+      "id": "bmstu-iuk5-admission-plan-2026-2027",
+      "stable_key": "bmstu.kf.admission-plan.2026-2027",
+      "url": "https://kf.bmstu.ru/priemnaya-komissiya/uchebnye-plany-1-go-kursa",
+      "source_type": "WEB_PAGE",
+      "document_kind": "program",
+      "profile_code": "university_program",
+      "run_live": false,
+      "golden_expectations": [
+        {"field": "program code", "value": "09.03.01", "kind": "identifier"},
+        {"field": "pilot IUK5 profile", "value": "Разработка и эксплуатация систем искусственного интеллекта и обработки больших данных", "kind": "text"},
+        {"field": "bachelor IUK5 profile", "value": "Системы обработки информации и управления", "kind": "text"},
+        {"field": "admission plan academic year", "value": "2026-2027", "kind": "text"}
+      ]
+    },
+    {
+      "id": "bmstu-iuk5-curriculum-2026-pilot",
+      "stable_key": "bmstu.kf.curriculum.09-03-01-43-iuk5.2026",
+      "url": "https://kf.bmstu.ru/uploads/userfiles/sveden/education/up/2026/pilot/09.03.01-43_iuk5.pdf",
+      "source_type": "PDF",
+      "document_kind": "program",
+      "profile_code": "university_program",
+      "run_live": true,
+      "golden_expectations": [
+        {"field": "program code", "value": "09.03.01", "kind": "identifier"},
+        {"field": "pilot program title", "value": "Разработка и эксплуатация систем искусственного интеллекта и обработки больших данных", "kind": "text"},
+        {"field": "admission year", "value": "2026", "kind": "number"}
+      ]
+    },
+    {
+      "id": "bmstu-admission-exams-page-2026",
+      "stable_key": "bmstu.kf.admission-exams.2026",
+      "url": "https://kf.bmstu.ru/bakalavriat-i-specialitet/vstupitelnye-ispytaniya",
+      "source_type": "WEB_PAGE",
+      "document_kind": "regulatory_document",
+      "profile_code": "regulatory_document",
+      "run_live": true,
+      "golden_expectations": [
+        {"field": "admission year", "value": "2026/2027", "kind": "text"},
+        {"field": "official exam appendix", "value": "Приложение 1", "kind": "text"},
+        {"field": "BMSTU", "value": "МГТУ", "kind": "text"}
+      ]
+    },
+    {
+      "id": "bmstu-admission-appendix-1-2026",
+      "stable_key": "bmstu.admission.appendix-1.exam-minimums.2026.dsl-v6",
+      "url": "https://api.www.bmstu.ru/file/123748/download",
+      "source_type": "PDF",
+      "document_kind": "regulatory_document",
+      "profile_code": "bmstu_admission_minimums_2026_v6",
+      "profile_prompt_version": "bmstu-admission-minimums-2026-v6",
+      "run_version": "dsl-v6",
+      "run_live": true,
+      "profile_instructions": "Return one CandidateRule only for program 09.03.01, General BMSTU table p.1. Output JSON MUST include all six required arrays: entities:[], facts:[], relations:[], rules:[the one rule], unknown_concepts:[], changes:[]. Do not omit any array. Conditions: Russian language >=46 AND mathematics >=46 AND physics >=46, all thresholds inclusive. Core DSL: logical={\"kind\":\"logical\",\"operator\":\"and\",\"args\":[...]}; each comparison={\"kind\":\"comparison\",\"operator\":\">=\",\"left\":{\"kind\":\"fact\",\"subject\":\"applicant\",\"property\":\"exam_score\",\"exam_subject\":\"...\"},\"right\":{\"kind\":\"literal\",\"value\":46}}. Scope exactly program_code 09.03.01, admission_year 2026, section General BMSTU. Effect exactly {\"type\":\"EMIT_DERIVED\",\"target\":\"entrance_exams_passed\",\"value\":true}; effects require a non-empty target and a value except MARK_ELIGIBLE/MARK_INELIGIBLE. It means listed exams passed only, never admission. Leave valid_from/valid_to null. Evidence must quote the exact 09.03.01 p.1 row continuously, with no ellipses. In each evidence locator copy artifact_id and source_url from the shared DOCUMENT DATA.artifact object; use this chunk's page/selector/table/row locator.",
+      "golden_expectations": [
+        {"field": "program code", "value": "09.03.01", "kind": "identifier"},
+        {"field": "general BMSTU Russian-language minimum", "value": "46", "kind": "number"},
+        {"field": "general BMSTU mathematics minimum", "value": "46", "kind": "number"},
+        {"field": "general BMSTU physics minimum", "value": "46", "kind": "number"},
+        {"field": "official admission year", "value": "2026", "kind": "number"}
+      ],
+      "rule_expectation": {"operator": ">=", "threshold": 46},
+      "rule_condition_expectations": [
+        {"section": "General BMSTU", "all_conditions": [{"subject": "Русский язык", "operator": ">=", "threshold": 46}, {"subject": "Математика", "operator": ">=", "threshold": 46}, {"subject": "Физика", "operator": ">=", "threshold": 46}], "any_conditions": []}
+      ],
+      "rule_effect_expectation": {"type": "EMIT_DERIVED", "target": "entrance_exams_passed", "value": true},
+      "fact_expectations": []
+    },
+    {
+      "id": "bmstu-admission-seats-2026",
+      "stable_key": "bmstu.kf.admission-seats.2026",
+      "url": "https://kf.bmstu.ru/bakalavriat-i-specialitet/kontrolnye-cifry-priyoma",
+      "source_type": "WEB_PAGE",
+      "document_kind": "regulatory_document",
+      "profile_code": "regulatory_document",
+      "run_live": true,
+      "golden_expectations": [
+        {"field": "admission year", "value": "2026", "kind": "number"},
+        {"field": "program code", "value": "09.03.01", "kind": "identifier"},
+        {"field": "IUK5 budget places", "value": "42", "kind": "number"},
+        {"field": "IUK5 paid places", "value": "15", "kind": "number"},
+        {"field": "IUK5 quota places", "value": "5", "kind": "number"}
+      ]
+    },
+    {
+      "id": "bmstu-olympiads-2026",
+      "stable_key": "bmstu.kf.olympiads.admission",
+      "url": "https://kf.bmstu.ru/bakalavriat-i-specialitet/olimpiady",
+      "source_type": "WEB_PAGE",
+      "document_kind": "regulatory_document",
+      "profile_code": "regulatory_document",
+      "run_live": false,
+      "golden_expectations": [
+        {"field": "subject-specific olympiad benefit", "value": "100", "kind": "number"},
+        {"field": "minimum confirmation score", "value": "75", "kind": "number"},
+        {"field": "no-exam admission benefit", "value": "без вступительных испытаний", "kind": "text"}
+      ]
+    },
+    {
+      "id": "bmstu-individual-achievements",
+      "stable_key": "bmstu.kf.individual-achievements.admission",
+      "url": "https://kf.bmstu.ru/bakalavriat-i-specialitet/individualnye-dostizheniya",
+      "source_type": "WEB_PAGE",
+      "document_kind": "regulatory_document",
+      "profile_code": "regulatory_document",
+      "run_live": false,
+      "golden_expectations": [
+        {"field": "individual achievements section", "value": "индивидуальные достижения", "kind": "text"},
+        {"field": "applicant admission context", "value": "поступ", "kind": "text"}
+      ]
+    }
+  ]
+}

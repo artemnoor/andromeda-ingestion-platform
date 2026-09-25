@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from andromeda_ingestion.application.extraction.serialization import extraction_result, ontology_snapshot
+from andromeda_ingestion.application.extraction.serialization import (
+    extraction_result,
+    ontology_snapshot,
+    prepared_document,
+    raw_artifact,
+)
 from andromeda_ingestion.application.validation.service import ExtractionValidator
 from andromeda_ingestion.domain.common import CandidateStatus
+from andromeda_ingestion.domain.errors import ValidationError
 from andromeda_ingestion.domain.ports.knowledge_core import KnowledgeCorePort
 from andromeda_ingestion.domain.ports.repositories import IngestionRepositoryPort
 
@@ -18,11 +24,20 @@ class ValidationService:
     async def validate(self, extraction_id: str) -> dict:
         extraction = await self.repository.get_extraction(extraction_id)
         result = extraction_result(extraction["result_json"])
+        artifact = raw_artifact(await self.repository.get_artifact(result.artifact_id))
+        prepared_data = await self.repository.get_prepared(artifact.id)
+        if not prepared_data:
+            raise ValidationError(
+                "PREPARED_DOCUMENT_NOT_FOUND",
+                "Evidence validation requires the prepared source document.",
+                {"artifact_id": artifact.id},
+            )
+        prepared = prepared_document(prepared_data)
         try:
             ontology = ontology_snapshot(await self.core.get_ontology_snapshot())
         except Exception:
             ontology = ontology_snapshot({})
-        report = await self.validator.validate(result, ontology)
+        report = await self.validator.validate(result, ontology, prepared, artifact)
         all_candidates = await self.repository.list_candidates(extraction_id)
         for row in all_candidates:
             if row["id"] in report.validated_candidate_ids:

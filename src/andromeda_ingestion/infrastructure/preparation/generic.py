@@ -19,6 +19,8 @@ from andromeda_ingestion.domain.ports.preparation import DocumentPreparationPort
 
 
 class GenericDocumentPreparation(DocumentPreparationPort):
+    preparation_version = "generic-2"
+
     def __init__(self, max_chunks: int = 500) -> None:
         self.max_chunks = max_chunks
 
@@ -49,7 +51,7 @@ class GenericDocumentPreparation(DocumentPreparationPort):
         return PreparedDocument(
             id=uuid4().hex,
             artifact_id=artifact.id,
-            preparation_version="generic-1",
+            preparation_version=self.preparation_version,
             content_fingerprint=sha256(json.dumps(serialized, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest(),
             document_type=str(artifact.metadata.get("document_kind", "document")),
             title=title,
@@ -64,11 +66,17 @@ class GenericDocumentPreparation(DocumentPreparationPort):
     def _html(self, artifact: RawArtifact, body: bytes) -> tuple[str | None, list[dict], list[dict], list[dict], list[ContentChunk], dict]:
         soup = BeautifulSoup(body, "html.parser")
         title = soup.title.get_text(" ", strip=True) if soup.title else None
+        for element in soup.find_all(["script", "style", "noscript", "svg", "nav", "header", "footer", "aside", "form"]):
+            element.decompose()
+        content_root = soup.find("main") or soup.find(attrs={"role": "main"}) or soup.body or soup
         sections: list[dict] = []
         tables: list[dict] = []
         links: list[dict] = []
         chunks: list[ContentChunk] = []
-        for index, element in enumerate(soup.find_all(["h1", "h2", "h3", "p", "li", "article", "section", "pre"])):
+        content_tags = ["h1", "h2", "h3", "p", "li", "pre"]
+        for index, element in enumerate(content_root.find_all(content_tags)):
+            if element.find(content_tags) or element.find_parent("table"):
+                continue
             text = element.get_text(" ", strip=True)
             if not text:
                 continue
@@ -84,7 +92,7 @@ class GenericDocumentPreparation(DocumentPreparationPort):
             chunks.extend(self._split_chunk(artifact, text, index, locator, "html"))
             if element.name in {"h1", "h2", "h3"}:
                 sections.append({"heading": text, "level": int(element.name[1])})
-        for table_index, table in enumerate(soup.find_all("table"), start=1):
+        for table_index, table in enumerate(content_root.find_all("table"), start=1):
             rows = [[cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"])] for row in table.find_all("tr")]
             rows = [row for row in rows if row]
             if rows:
@@ -101,9 +109,9 @@ class GenericDocumentPreparation(DocumentPreparationPort):
                         quote=text[:4000],
                     )
                     chunks.extend(self._split_chunk(artifact, text, len(chunks), locator, "table"))
-        for link in soup.find_all("a", href=True):
+        for link in content_root.find_all("a", href=True):
             links.append({"href": str(link["href"]), "text": link.get_text(" ", strip=True)[:512]})
-        return title, sections, tables, links, chunks, {"format": "html"}
+        return title, sections, tables, links, chunks, {"format": "html", "content_root": _stable_selector(content_root)}
 
     def _pdf(self, artifact: RawArtifact, body: bytes) -> tuple[str | None, list[dict], list[dict], list[dict], list[ContentChunk], dict]:
         reader = PdfReader(io.BytesIO(body))

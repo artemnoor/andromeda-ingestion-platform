@@ -15,6 +15,7 @@ from andromeda_ingestion.domain.contracts import (
     RawArtifact,
     SourceDefinition,
 )
+from andromeda_ingestion.domain.errors import UpstreamError
 from andromeda_ingestion.infrastructure.config import Settings
 from andromeda_ingestion.infrastructure.knowledge_core.http import KnowledgeCoreHttpAdapter
 
@@ -147,3 +148,19 @@ async def test_core_http_adapter_publishes_rule_candidate_to_dedicated_endpoint(
     assert captured["source_id"] == "core-source-1"
     assert captured["source_document_id"] == "core-document-1"
     assert captured["candidate_id"] == "rule-candidate-1"
+
+
+@pytest.mark.asyncio
+async def test_core_http_adapter_distinguishes_contract_rejection_from_unavailability() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={"detail": "invalid rule effect"}, request=request)
+
+    client = httpx.AsyncClient(base_url="https://core.example", transport=httpx.MockTransport(handler))
+    adapter = KnowledgeCoreHttpAdapter(Settings(app_env="test", knowledge_core_url="https://core.example"), client=client)
+
+    with pytest.raises(UpstreamError) as error:
+        await adapter._request("POST", "/api/v1/rules/candidates", json={"candidate_id": "rule-1"})
+    await client.aclose()
+
+    assert error.value.code == "CORE_VALIDATION_FAILED"
+    assert error.value.details == {"path": "/api/v1/rules/candidates", "status_code": 422}

@@ -17,10 +17,14 @@ from andromeda_ingestion.main import create_app
 def app_client(tmp_path: Path):
     database_url = f"sqlite+aiosqlite:///{(tmp_path / 'ingestion.db').as_posix()}"
     settings = Settings(
+        _env_file=None,
         app_env="test",
         database_url=database_url,
         artifact_storage_root=str(tmp_path / "artifacts"),
         mock_ai_enabled=True,
+        ai_provider="mock",
+        ai_endpoint=None,
+        ai_api_key=None,
         auto_seed=False,
     )
     engine = create_engine(settings)
@@ -33,6 +37,22 @@ def app_client(tmp_path: Path):
     app = create_app(settings, AdapterContainer.from_settings(settings))
     with TestClient(app) as client:
         yield client, settings
+
+
+@pytest.fixture(autouse=True)
+def isolate_live_ai_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ordinary tests independent from a developer's live ``.env``.
+
+    A Settings instance created directly by a unit test would otherwise load
+    the local Polza key and provider defaults from ``.env``. The explicit
+    empty values prevent accidental live calls even in tests that do not use
+    ``app_client``. Live evaluation belongs in the opt-in script only.
+    """
+
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    monkeypatch.setenv("AI_ENDPOINT", "")
+    monkeypatch.setenv("AI_API_KEY", "")
+    monkeypatch.setenv("MOCK_AI_ENABLED", "true")
 
 
 @pytest.fixture
